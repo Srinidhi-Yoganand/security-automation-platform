@@ -1,0 +1,274 @@
+name: Security Automation Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '17'
+  MAVEN_OPTS: -Xmx2g
+
+jobs:
+  # Job 1: Build the vulnerable application
+  build:
+    name: Build Vulnerable Application
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Build with Maven
+      working-directory: ./vulnerable-app
+      run: mvn clean package -DskipTests
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: vulnerable-app-jar
+        path: vulnerable-app/target/*.jar
+        retention-days: 1
+
+  # Job 2: Run SAST with Semgrep
+  sast-semgrep:
+    name: SAST - Semgrep Scan
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/java
+          p/owasp-top-ten
+        generateSarif: true
+        
+    - name: Upload Semgrep SARIF
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: semgrep-results
+        path: semgrep.sarif
+        retention-days: 7
+
+  # Job 3: Run SAST with CodeQL
+  sast-codeql:
+    name: SAST - CodeQL Analysis
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: java
+        queries: security-extended,security-and-quality
+        
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        cache: maven
+        
+    - name: Build for CodeQL
+      working-directory: ./vulnerable-app
+      run: mvn clean compile -DskipTests
+      
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:java"
+        upload: false
+        output: codeql-results
+        
+    - name: Upload CodeQL results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: codeql-results
+        path: codeql-results
+        retention-days: 7
+
+  # Job 4: Deploy to staging and run DAST
+  dast-zap:
+    name: DAST - OWASP ZAP Scan
+    runs-on: ubuntu-latest
+    needs: build
+    
+    services:
+      # We'll run the app as a service
+      vulnerable-app:
+        image: openjdk:17-slim
+        ports:
+          - 8080:8080
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download application artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: vulnerable-app-jar
+        path: ./app
+        
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        
+    - name: Start application
+      run: |
+        cd app
+        java -jar vulnerable-app-*.jar &
+        echo $! > app.pid
+        
+        # Wait for application to start
+        echo "Waiting for application to start..."
+        for i in {1..30}; do
+          if curl -s http://localhost:8080/actuator/health 2>/dev/null || curl -s http://localhost:8080 2>/dev/null; then
+            echo "Application is up!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 2
+        done
+        
+    - name: Run ZAP Baseline Scan
+      uses: zaproxy/action-baseline@v0.10.0
+      with:
+        target: 'http://localhost:8080'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a -j -l WARN -n zap-context.xml -U alice -z "-config api.disablekey=true"'
+        fail_action: false
+        
+    - name: Run ZAP Full Scan
+      uses: zaproxy/action-full-scan@v0.8.0
+      with:
+        target: 'http://localhost:8080'
+        fail_action: false
+        allow_issue_writing: false
+        artifact_name: 'zap-scan-results'
+        
+    - name: Upload ZAP results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-results
+        path: |
+          zap-scan-results/*.json
+          zap-scan-results/*.html
+        retention-days: 7
+        
+    - name: Stop application
+      if: always()
+      run: |
+        if [ -f app/app.pid ]; then
+          kill $(cat app/app.pid) || true
+        fi
+
+  # Job 5: Correlate results using the correlation engine
+  correlate:
+    name: Correlate Security Findings
+    runs-on: ubuntu-latest
+    needs: [sast-semgrep, sast-codeql, dast-zap]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+        
+    - name: Download all scan results
+      uses: actions/download-artifact@v4
+      with:
+        path: scan-results
+        
+    - name: Install correlation engine dependencies
+      run: |
+        cd correlation-engine
+        pip install -r requirements.txt
+        
+    - name: Run correlation analysis
+      run: |
+        cd correlation-engine
+        python -m app.main correlate \
+          --semgrep ../scan-results/semgrep-results/semgrep.sarif \
+          --codeql ../scan-results/codeql-results/ \
+          --zap ../scan-results/zap-results/*.json \
+          --output ../correlation-report.json
+          
+    - name: Upload correlation report
+      uses: actions/upload-artifact@v4
+      with:
+        name: correlation-report
+        path: correlation-report.json
+        retention-days: 30
+        
+    - name: Generate security dashboard
+      run: |
+        cd correlation-engine
+        python -m app.main dashboard \
+          --input ../correlation-report.json \
+          --output ../security-dashboard.html
+          
+    - name: Upload security dashboard
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-dashboard
+        path: security-dashboard.html
+        retention-days: 30
+        
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('correlation-report.json', 'utf8'));
+          
+          const comment = `## 🔒 Security Scan Results
+          
+          **Total Findings:** ${report.total_findings}
+          **Critical:** ${report.critical} | **High:** ${report.high} | **Medium:** ${report.medium} | **Low:** ${report.low}
+          
+          **Correlated Vulnerabilities:** ${report.correlated_count}
+          
+          [View Full Dashboard](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
