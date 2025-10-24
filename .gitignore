@@ -1,0 +1,47 @@
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+build/
+.gradle/
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+pip-log.txt
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Security scan results
+scan-results/
+*.sarif
+*.json
+
+# Sensitive files
+.env
+application-local.properties
+
+# Node modules (for any JS tooling)
+node_modules/
