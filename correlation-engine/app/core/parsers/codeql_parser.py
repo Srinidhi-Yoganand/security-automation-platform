@@ -94,11 +94,14 @@ class CodeQLParser:
     @staticmethod
     def _create_finding_from_csv(row: Dict[str, str]) -> Finding:
         """Create Finding from CSV row"""
-        # Extract common fields
-        name = row.get('name', row.get('query', 'unknown'))
-        description = row.get('description', row.get('message', ''))
-        file_path = row.get('file', row.get('path', ''))
-        line_number = int(row.get('line', row.get('startLine', '0')))
+        # Extract common fields (case-insensitive column names)
+        name = row.get('Name', row.get('name', row.get('Query', row.get('query', 'unknown'))))
+        description = row.get('Message', row.get('message', row.get('description', '')))
+        file_path = row.get('Path', row.get('path', row.get('file', '')))
+        
+        # Try multiple column names for line number
+        line_str = row.get('Start Line', row.get('startLine', row.get('line', '0')))
+        line_number = int(line_str) if line_str else 0
         
         # CodeQL findings are generally high confidence
         return Finding(

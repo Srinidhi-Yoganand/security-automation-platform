@@ -18,46 +18,46 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .csrf(csrf -> csrf.disable()) // Disabled for easier testing
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/h2-console/**", "/api/public/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .httpBasic(basic -> {})
-            .headers(headers -> headers.frameOptions(frame -> frame.disable())); // For H2 console
-        
-        return http.build();
-    }
+  @Bean
+  public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    http
+        .csrf(csrf -> csrf.disable()) // Disabled for easier testing
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/h2-console/**", "/api/public/**").permitAll()
+            .anyRequest().authenticated())
+        .httpBasic(basic -> {
+        })
+        .headers(headers -> headers.frameOptions(frame -> frame.disable())); // For H2 console
 
-    @Bean
-    public UserDetailsService userDetailsService() {
-        // Create test users
-        UserDetails admin = User.builder()
-            .username("admin")
-            .password(passwordEncoder().encode("admin123"))
-            .roles("ADMIN")
-            .build();
+    return http.build();
+  }
 
-        UserDetails alice = User.builder()
-            .username("alice")
-            .password(passwordEncoder().encode("alice123"))
-            .roles("USER")
-            .build();
+  @Bean
+  public UserDetailsService userDetailsService() {
+    // Create test users
+    UserDetails admin = User.builder()
+        .username("admin")
+        .password(passwordEncoder().encode("admin123"))
+        .roles("ADMIN")
+        .build();
 
-        UserDetails bob = User.builder()
-            .username("bob")
-            .password(passwordEncoder().encode("bob123"))
-            .roles("USER")
-            .build();
+    UserDetails alice = User.builder()
+        .username("alice")
+        .password(passwordEncoder().encode("alice123"))
+        .roles("USER")
+        .build();
 
-        return new InMemoryUserDetailsManager(admin, alice, bob);
-    }
+    UserDetails bob = User.builder()
+        .username("bob")
+        .password(passwordEncoder().encode("bob123"))
+        .roles("USER")
+        .build();
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+    return new InMemoryUserDetailsManager(admin, alice, bob);
+  }
+
+  @Bean
+  public PasswordEncoder passwordEncoder() {
+    return new BCryptPasswordEncoder();
+  }
 }

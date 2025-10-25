@@ -8,96 +8,96 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "orders")
 public class Order {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne
-    @JoinColumn(name = "user_id")
-    private User user;
-    
-    @ManyToOne
-    @JoinColumn(name = "company_id")
-    private Company company;
-    
-    @Column(nullable = false)
-    private String productName;
-    
-    @Column(nullable = false)
-    private BigDecimal amount;
-    
-    @Column
-    private String shippingAddress;
-    
-    @Column
-    private String status; // PENDING, SHIPPED, DELIVERED
-    
-    @Column
-    private LocalDateTime createdAt;
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  @ManyToOne
+  @JoinColumn(name = "user_id")
+  private User user;
 
-    public User getUser() {
-        return user;
-    }
+  @ManyToOne
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    public void setUser(User user) {
-        this.user = user;
-    }
+  @Column(nullable = false)
+  private String productName;
 
-    public Company getCompany() {
-        return company;
-    }
+  @Column(nullable = false)
+  private BigDecimal amount;
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  @Column
+  private String shippingAddress;
 
-    public String getProductName() {
-        return productName;
-    }
+  @Column
+  private String status; // PENDING, SHIPPED, DELIVERED
 
-    public void setProductName(String productName) {
-        this.productName = productName;
-    }
+  @Column
+  private LocalDateTime createdAt;
 
-    public BigDecimal getAmount() {
-        return amount;
-    }
+  // Getters and Setters
+  public Long getId() {
+    return id;
+  }
 
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    public String getShippingAddress() {
-        return shippingAddress;
-    }
+  public User getUser() {
+    return user;
+  }
 
-    public void setShippingAddress(String shippingAddress) {
-        this.shippingAddress = shippingAddress;
-    }
+  public void setUser(User user) {
+    this.user = user;
+  }
 
-    public String getStatus() {
-        return status;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public void setStatus(String status) {
-        this.status = status;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
+  public String getProductName() {
+    return productName;
+  }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
+  public void setProductName(String productName) {
+    this.productName = productName;
+  }
+
+  public BigDecimal getAmount() {
+    return amount;
+  }
+
+  public void setAmount(BigDecimal amount) {
+    this.amount = amount;
+  }
+
+  public String getShippingAddress() {
+    return shippingAddress;
+  }
+
+  public void setShippingAddress(String shippingAddress) {
+    this.shippingAddress = shippingAddress;
+  }
+
+  public String getStatus() {
+    return status;
+  }
+
+  public void setStatus(String status) {
+    this.status = status;
+  }
+
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
+
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
+  }
 }

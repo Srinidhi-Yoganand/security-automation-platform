@@ -5,51 +5,51 @@ import jakarta.persistence.*;
 @Entity
 @Table(name = "companies")
 public class Company {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false)
-    private String name;
-    
-    @Column
-    private String address;
-    
-    @ManyToOne
-    @JoinColumn(name = "owner_id")
-    private User owner;
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  @Column(nullable = false)
+  private String name;
 
-    public String getName() {
-        return name;
-    }
+  @Column
+  private String address;
 
-    public void setName(String name) {
-        this.name = name;
-    }
+  @ManyToOne
+  @JoinColumn(name = "owner_id")
+  private User owner;
 
-    public String getAddress() {
-        return address;
-    }
+  // Getters and Setters
+  public Long getId() {
+    return id;
+  }
 
-    public void setAddress(String address) {
-        this.address = address;
-    }
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    public User getOwner() {
-        return owner;
-    }
+  public String getName() {
+    return name;
+  }
 
-    public void setOwner(User owner) {
-        this.owner = owner;
-    }
+  public void setName(String name) {
+    this.name = name;
+  }
+
+  public String getAddress() {
+    return address;
+  }
+
+  public void setAddress(String address) {
+    this.address = address;
+  }
+
+  public User getOwner() {
+    return owner;
+  }
+
+  public void setOwner(User owner) {
+    this.owner = owner;
+  }
 }

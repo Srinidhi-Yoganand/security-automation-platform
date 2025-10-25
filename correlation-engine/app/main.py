@@ -170,7 +170,7 @@ def cli_dashboard(args):
     
     # Save dashboard
     output_path = Path(args.output)
-    output_path.write_text(dashboard_html)
+    output_path.write_text(dashboard_html, encoding='utf-8')
     print(f"✅ Dashboard generated: {args.output}")
 
 
