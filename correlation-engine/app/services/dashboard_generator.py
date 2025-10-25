@@ -148,6 +148,9 @@ class DashboardGenerator:
             sources = ', '.join(finding.get('sources', []))
             confirmed = '✓' if finding.get('data_flow_confirmed') else '○'
             
+            # Generate unique ID for this finding
+            finding_id = finding.get('id', hash(str(finding.get('file', '')) + str(finding.get('line', ''))))
+            
             findings_html += f"""
                 <tr class="border-b hover:bg-gray-50">
                     <td class="px-4 py-3">{finding.get('type', 'Unknown')}</td>
@@ -161,6 +164,14 @@ class DashboardGenerator:
                     <td class="px-4 py-3 text-sm">{sources}</td>
                     <td class="px-4 py-3 text-center">{int(finding.get('confidence', 0) * 100)}%</td>
                     <td class="px-4 py-3 text-center text-lg">{confirmed}</td>
+                    <td class="px-4 py-3">
+                        <button onclick="generatePatch({finding_id})" 
+                                class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                id="patch-btn-{finding_id}">
+                            🤖 Generate Patch
+                        </button>
+                        <div id="patch-result-{finding_id}" class="mt-2 hidden"></div>
+                    </td>
                 </tr>
             """
         
@@ -252,6 +263,7 @@ class DashboardGenerator:
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sources</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Flow</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white">
@@ -281,6 +293,93 @@ class DashboardGenerator:
         }});
         
         {self._generate_behavior_charts_js(behavior_data)}
+        
+        // Patch Generation Functions
+        async function generatePatch(findingId) {{
+            const btn = document.getElementById(`patch-btn-${{findingId}}`);
+            const resultDiv = document.getElementById(`patch-result-${{findingId}}`);
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Generating...';
+            btn.classList.add('opacity-50');
+            
+            try {{
+                const response = await fetch('/api/patches/generate', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ vulnerability_id: findingId }})
+                }});
+                
+                if (!response.ok) throw new Error('Patch generation failed');
+                
+                const data = await response.json();
+                
+                btn.innerHTML = '✅ Patch Generated';
+                btn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                btn.classList.add('bg-blue-500');
+                
+                // Show patch in collapsible section
+                resultDiv.innerHTML = `
+                    <div class="bg-gray-50 border border-gray-200 rounded p-3 mt-2">
+                        <button onclick="togglePatch(${{findingId}})" class="w-full text-left font-semibold text-sm text-blue-600 hover:text-blue-800">
+                            📝 View Patch (Confidence: ${{data.confidence}})
+                        </button>
+                        <div id="patch-details-${{findingId}}" class="hidden mt-2 space-y-2">
+                            <div>
+                                <p class="text-xs text-gray-600 font-semibold mb-1">Original Code:</p>
+                                <pre class="bg-red-50 p-2 rounded text-xs overflow-x-auto"><code>${{escapeHtml(data.original_code)}}</code></pre>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600 font-semibold mb-1">Fixed Code:</p>
+                                <pre class="bg-green-50 p-2 rounded text-xs overflow-x-auto"><code>${{escapeHtml(data.fixed_code)}}</code></pre>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600 font-semibold mb-1">Explanation:</p>
+                                <p class="text-xs text-gray-700">${{data.explanation}}</p>
+                            </div>
+                            <button onclick="applyPatch(${{findingId}})" class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1 rounded text-xs">
+                                Apply Patch
+                            </button>
+                        </div>
+                    </div>
+                `;
+                resultDiv.classList.remove('hidden');
+                
+            }} catch (error) {{
+                btn.innerHTML = '❌ Error';
+                btn.classList.add('bg-red-500');
+                resultDiv.innerHTML = `<p class="text-xs text-red-600 mt-2">Error: ${{error.message}}</p>`;
+                resultDiv.classList.remove('hidden');
+            }}
+        }}
+        
+        function togglePatch(findingId) {{
+            const details = document.getElementById(`patch-details-${{findingId}}`);
+            details.classList.toggle('hidden');
+        }}
+        
+        async function applyPatch(findingId) {{
+            if (!confirm('Apply this patch? This will modify the source code.')) return;
+            
+            try {{
+                const response = await fetch(`/api/patches/${{findingId}}/apply`, {{
+                    method: 'POST'
+                }});
+                
+                if (!response.ok) throw new Error('Failed to apply patch');
+                
+                alert('✅ Patch applied successfully!');
+                location.reload();
+            }} catch (error) {{
+                alert(`❌ Error: ${{error.message}}`);
+            }}
+        }}
+        
+        function escapeHtml(text) {{
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
     </script>
 </body>
 </html>

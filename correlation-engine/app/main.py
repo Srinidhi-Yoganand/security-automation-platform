@@ -77,6 +77,58 @@ async def health_check():
     return {"status": "healthy", "version": __version__}
 
 
+@app.get("/api/llm/status")
+async def llm_status():
+    """Check LLM provider status"""
+    try:
+        from app.services.patcher.llm_patch_generator import LLMPatchGenerator
+        
+        generator = LLMPatchGenerator()
+        
+        status = {
+            "provider": generator.llm_provider,
+            "status": "operational" if generator.llm_provider != "template" else "fallback",
+            "available_providers": []
+        }
+        
+        # Check each provider
+        try:
+            import google.generativeai as genai
+            import os
+            if os.getenv("GEMINI_API_KEY"):
+                status["available_providers"].append("gemini")
+        except:
+            pass
+        
+        try:
+            import ollama
+            try:
+                client = ollama.Client()
+                models = client.list()
+                if models and models.get('models'):
+                    status["available_providers"].append("ollama")
+                    status["ollama_models"] = [m.get('name', m.get('model', '')) for m in models['models']]
+            except:
+                pass
+        except:
+            pass
+        
+        try:
+            import openai
+            import os
+            if os.getenv("OPENAI_API_KEY"):
+                status["available_providers"].append("openai")
+        except:
+            pass
+        
+        if not status["available_providers"]:
+            status["available_providers"].append("template")
+        
+        return status
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.post("/api/v1/correlate", response_model=CorrelationResponse)
 async def correlate_findings(request: CorrelationRequest):
     """
@@ -265,6 +317,298 @@ async def get_risk_ranked_vulnerabilities(limit: int = 20):
                 for v in vulns
             ]
         }
+
+
+@app.post("/api/v1/vulnerabilities/{vuln_id}/generate-patch")
+async def generate_patch_for_vulnerability(
+    vuln_id: int, 
+    repo_path: str = "../vulnerable-app",
+    test_patch: bool = True
+):
+    """
+    Generate an LLM-powered security patch for a specific vulnerability
+    
+    Args:
+        vuln_id: Vulnerability ID from database
+        repo_path: Path to repository (default: ../vulnerable-app)
+        test_patch: Whether to test patch in separate branch (default: True)
+    """
+    from app.database import get_db
+    from app.models import Vulnerability
+    from app.services.patcher.llm_patch_generator import LLMPatchGenerator, PatchContext
+    
+    with get_db() as db:
+        vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
+        
+        if not vuln:
+            raise HTTPException(status_code=404, detail="Vulnerability not found")
+        
+        # Create patch context with full vulnerability info
+        context = PatchContext(
+            vulnerability_type=vuln.type,
+            file_path=vuln.file_path,
+            line_number=vuln.line_number,
+            vulnerable_code=vuln.message or "",
+            severity=vuln.severity,
+            confidence=vuln.confidence,
+            description=vuln.description,
+            cwe_id=vuln.cwe_id,
+            tool_name=vuln.tool
+            tool_name=vuln.tool
+        )
+        
+        # Generate patch using LLM
+        generator = LLMPatchGenerator(repo_path)
+        patch = generator.generate_patch(context, test_patch=test_patch)
+        
+        if not patch:
+            return {
+                "success": False,
+                "message": f"Unable to generate patch for {vuln.type}",
+                "vulnerability": {
+                    "id": vuln.id,
+                    "type": vuln.type,
+                    "file": vuln.file_path,
+                    "line": vuln.line_number
+                }
+            }
+        
+        # Update vulnerability with patch info
+        vuln.patch_available = True
+        db.commit()
+        
+        # Send notifications
+        try:
+            from app.services.notifications import NotificationService
+            notifier = NotificationService()
+            notification_results = notifier.notify_patch_generated({
+                "vulnerability_type": patch.vulnerability_type,
+                "severity": vuln.severity,
+                "file_path": patch.file_path,
+                "line_number": patch.line_number,
+                "confidence": patch.confidence,
+                "explanation": patch.explanation,
+                "llm_provider": generator.llm_provider,
+                "original_code": patch.original_code,
+                "fixed_code": patch.fixed_code
+            })
+        except Exception as e:
+            print(f"Notification failed: {e}")
+            notification_results = {"error": str(e)}
+        
+        return {
+            "success": True,
+            "notifications_sent": notification_results,
+            "vulnerability": {
+                "id": vuln.id,
+                "type": patch.vulnerability_type,
+                "file": patch.file_path,
+                "line": patch.line_number,
+                "severity": vuln.severity,
+                "risk_score": vuln.risk_score
+            },
+            "patch": {
+                "original_code": patch.original_code,
+                "fixed_code": patch.fixed_code,
+                "explanation": patch.explanation,
+                "confidence": patch.confidence,
+                "status": patch.status.value,
+                "test_branch": patch.test_branch,
+                "test_results": patch.test_results,
+                "breaking_changes": patch.breaking_changes or [],
+                "prerequisites": patch.prerequisites or [],
+                "manual_review_needed": patch.manual_review_needed,
+                "remediation_guide": patch.remediation_guide,
+                "diff": patch.diff
+            }
+        }
+
+
+@app.post("/api/v1/scans/{scan_id}/generate-patches")
+async def generate_patches_for_scan(
+    scan_id: int, 
+    repo_path: str = "../vulnerable-app", 
+    limit: int = 20,
+    test_patches: bool = True
+):
+    """
+    Generate LLM-powered patches for all fixable vulnerabilities in a scan
+    
+    Args:
+        scan_id: Scan ID from database
+        repo_path: Path to repository (default: ../vulnerable-app)
+        limit: Maximum number of patches to generate (default: 20)
+        test_patches: Whether to test patches in separate branches (default: True)
+    """
+    from app.database import get_db
+    from app.models import Vulnerability, Scan
+    from app.services.patcher.llm_patch_generator import LLMPatchGenerator, PatchContext
+    
+    with get_db() as db:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if not scan:
+            raise HTTPException(status_code=404, detail="Scan not found")
+        
+        # Get all non-fixed vulnerabilities from this scan
+        vulns = db.query(Vulnerability).filter(
+            Vulnerability.scan_id == scan_id,
+            Vulnerability.state != 'fixed'
+        ).order_by(Vulnerability.risk_score.desc()).limit(limit).all()
+        
+        generator = LLMPatchGenerator(repo_path)
+        patches = []
+        skipped = []
+        
+        for vuln in vulns:
+            print(f"\n{'='*60}")
+            print(f"Processing vulnerability {vuln.id}: {vuln.type}")
+            print(f"{'='*60}")
+            
+            context = PatchContext(
+                vulnerability_type=vuln.type,
+                file_path=vuln.file_path,
+                line_number=vuln.line_number,
+                vulnerable_code=vuln.message or "",
+                severity=vuln.severity,
+                confidence=vuln.confidence,
+                description=vuln.description,
+                cwe_id=vuln.cwe_id,
+                tool_name=vuln.tool
+            )
+            
+            patch = generator.generate_patch(context, test_patch=test_patches)
+            
+            if patch:
+                # Update vulnerability
+                vuln.patch_available = True
+                
+                patches.append({
+                    "vulnerability_id": vuln.id,
+                    "type": patch.vulnerability_type,
+                    "file": patch.file_path,
+                    "line": patch.line_number,
+                    "risk_score": vuln.risk_score,
+                    "original_code": patch.original_code,
+                    "fixed_code": patch.fixed_code,
+                    "explanation": patch.explanation,
+                    "confidence": patch.confidence,
+                    "status": patch.status.value,
+                    "test_branch": patch.test_branch,
+                    "test_results": patch.test_results,
+                    "breaking_changes": patch.breaking_changes or [],
+                    "prerequisites": patch.prerequisites or [],
+                    "manual_review_needed": patch.manual_review_needed,
+                    "diff": patch.diff
+                })
+            else:
+                skipped.append({
+                    "vulnerability_id": vuln.id,
+                    "type": vuln.type,
+                    "reason": "Patch generation failed or not applicable"
+                })
+        
+        # Commit database changes
+        db.commit()
+        
+        return {
+            "scan_id": scan_id,
+            "commit_hash": scan.commit_hash,
+            "patches_generated": len(patches),
+            "vulnerabilities_skipped": len(skipped),
+            "patches": patches,
+            "skipped": skipped,
+            "note": "Test patches in their respective branches before approving and applying"
+        }
+
+
+@app.post("/api/v1/patches/{vuln_id}/test")
+async def test_patch_in_branch(vuln_id: int, repo_path: str = "../vulnerable-app"):
+    """
+    Test an existing patch in an isolated branch
+    Re-tests a previously generated patch
+    """
+    from app.database import get_db
+    from app.models import Vulnerability
+    from app.services.patcher.llm_patch_generator import LLMPatchGenerator, PatchContext
+    
+    with get_db() as db:
+        vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
+        
+        if not vuln:
+            raise HTTPException(status_code=404, detail="Vulnerability not found")
+        
+        if not vuln.patch_available:
+            raise HTTPException(status_code=400, detail="No patch available for this vulnerability")
+        
+        # Regenerate patch with testing enabled
+        context = PatchContext(
+            vulnerability_type=vuln.type,
+            file_path=vuln.file_path,
+            line_number=vuln.line_number,
+            vulnerable_code=vuln.message or "",
+            severity=vuln.severity,
+            confidence=vuln.confidence,
+            description=vuln.description,
+            cwe_id=vuln.cwe_id,
+            tool_name=vuln.tool
+        )
+        
+        generator = LLMPatchGenerator(repo_path)
+        patch = generator.generate_patch(context, test_patch=True)
+        
+        if not patch:
+            return {"success": False, "message": "Failed to regenerate patch"}
+        
+        return {
+            "success": True,
+            "vulnerability_id": vuln_id,
+            "test_branch": patch.test_branch,
+            "test_results": patch.test_results,
+            "status": patch.status.value
+        }
+
+
+@app.post("/api/v1/patches/apply")
+async def apply_patch(
+    test_branch: str,
+    target_branch: str = "main",
+    repo_path: str = "../vulnerable-app"
+):
+    """
+    Apply an approved patch from test branch to target branch
+    
+    Args:
+        test_branch: Name of the test branch with the patch
+        target_branch: Target branch to merge into (default: main)
+        repo_path: Path to repository
+    """
+    from app.services.patcher.llm_patch_generator import LLMPatchGenerator
+    from git import Repo
+    
+    try:
+        repo = Repo(repo_path)
+        generator = LLMPatchGenerator(repo_path)
+        
+        # Check if test branch exists
+        if test_branch not in [b.name for b in repo.heads]:
+            raise HTTPException(status_code=404, detail=f"Test branch '{test_branch}' not found")
+        
+        # Checkout target branch
+        repo.heads[target_branch].checkout()
+        
+        # Merge test branch
+        repo.git.merge(test_branch, no_ff=True)
+        
+        return {
+            "success": True,
+            "message": f"Patch from '{test_branch}' applied to '{target_branch}'",
+            "target_branch": target_branch,
+            "merged_branch": test_branch
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply patch: {str(e)}")
+
 
 
 @app.get("/api/v1/findings/{correlation_id}")

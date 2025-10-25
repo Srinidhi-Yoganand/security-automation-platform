@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Ollama LLM Service (DeepSeek Coder)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: security-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Correlation Engine API
+  correlation-engine:
+    build: 
+      context: ./correlation-engine
+      dockerfile: Dockerfile
+    container_name: security-correlation
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_PROVIDER=ollama
+      - OLLAMA_MODEL=deepseek-coder:6.7b-instruct
+      - DATABASE_URL=sqlite:///./security.db
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./test-data:/app/test-data
+      - ./vulnerable-app:/app/vulnerable-app
+      - correlation_data:/app/data
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for Ollama to be ready...' &&
+        sleep 10 &&
+        python -c 'import ollama; ollama.pull(\"deepseek-coder:6.7b-instruct\")' || true &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
+  # ==============================================================
+  # VULNERABLE APP - FOR TESTING ONLY (NOT FOR PRODUCTION)
+  # ==============================================================
+  # This is a deliberately vulnerable Java app used for testing
+  # the security scanning and patching features.
+  # 
+  # DO NOT include this in production deployments!
+  # Comment out or remove this service when deploying for real use.
+  # ==============================================================
+  
+  # vulnerable-app:
+  #   build:
+  #     context: ./vulnerable-app
+  #     dockerfile: Dockerfile
+  #   container_name: security-vulnerable-app
+  #   ports:
+  #     - "8080:8080"
+  #   restart: unless-stopped
+
+volumes:
+  ollama_data:
+    name: security-ollama-models
+  correlation_data:
+    name: security-correlation-data
+
+networks:
+  default:
+    name: security-automation-network

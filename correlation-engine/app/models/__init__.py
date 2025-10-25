@@ -4,7 +4,7 @@ Database models for Phase 2: Security Behavior Analysis
 
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Enum, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, ForeignKey, Enum, JSON, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -75,6 +75,11 @@ class Vulnerability(Base):
     message = Column(Text)
     cwe_id = Column(String(20))
     owasp_category = Column(String(50))
+    tool = Column(String(50))  # Which scanner found it (CodeQL, Semgrep, ZAP)
+    
+    # Patching
+    patch_available = Column(Boolean, default=False)
+    patch_applied = Column(Boolean, default=False)
     
     # Lifecycle
     state = Column(Enum(VulnerabilityState), default=VulnerabilityState.NEW)
