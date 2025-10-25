@@ -333,14 +333,169 @@ def cli_dashboard(args):
     
     report_data = json.loads(report_path.read_text())
     
-    # Generate dashboard
-    generator = DashboardGenerator()
+    # Generate dashboard with optional Phase 2 behavior analysis
+    include_behavior = args.behavior if hasattr(args, 'behavior') else False
+    generator = DashboardGenerator(include_behavior_analysis=include_behavior)
     dashboard_html = generator.generate(report_data)
     
     # Save dashboard
     output_path = Path(args.output)
     output_path.write_text(dashboard_html, encoding='utf-8')
-    print(f"✅ Dashboard generated: {args.output}")
+    
+    if include_behavior:
+        print(f"✅ Enhanced dashboard with behavior analysis generated: {args.output}")
+    else:
+        print(f"✅ Dashboard generated: {args.output}")
+
+
+def cli_integrate(args):
+    """Integrate Phase 1 correlation with Phase 2 behavior tracking"""
+    from app.core.correlator import SecurityCorrelator
+    from app.services.behavior.lifecycle_tracker import VulnerabilityLifecycleTracker
+    from app.core.git_analyzer import GitHistoryAnalyzer
+    from app.database import get_db, init_db
+    from app.models import Scan
+    from datetime import datetime
+    
+    print("🔗 Running Phase 1 + Phase 2 Integration...")
+    
+    # Initialize database
+    init_db()
+    
+    # Phase 1: Correlation
+    print("\n📊 Phase 1: Correlating findings...")
+    correlator = SecurityCorrelator()
+    
+    # Load scanner outputs
+    if args.semgrep:
+        semgrep_path = Path(args.semgrep)
+        if semgrep_path.exists():
+            correlator.add_semgrep_results(semgrep_path.read_text())
+            print(f"  ✅ Loaded Semgrep results: {args.semgrep}")
+    
+    if args.codeql:
+        codeql_path = Path(args.codeql)
+        if codeql_path.exists():
+            correlator.add_codeql_results(codeql_path.read_text())
+            print(f"  ✅ Loaded CodeQL results: {args.codeql}")
+    
+    if args.zap:
+        zap_path = Path(args.zap)
+        if zap_path.exists():
+            correlator.add_zap_results(zap_path.read_text())
+            print(f"  ✅ Loaded ZAP results: {args.zap}")
+    
+    # Run correlation
+    correlation_results = correlator.correlate()
+    print(f"  ✅ Found {correlation_results['correlated_count']} correlated findings")
+    
+    # Phase 2: Behavior Analysis
+    print("\n🔍 Phase 2: Tracking vulnerability lifecycle...")
+    
+    # Get git information
+    git_analyzer = GitHistoryAnalyzer(args.repo if hasattr(args, 'repo') else '.')
+    commit_info = git_analyzer.get_current_commit()
+    
+    with get_db() as db:
+        # Create scan record
+        scan = Scan(
+            timestamp=datetime.now(),
+            commit_hash=commit_info['hash'],
+            branch=commit_info.get('branch', 'main'),
+            author=commit_info['author'],
+            commit_message=commit_info.get('message', 'Automated scan'),
+            total_findings=correlation_results['total_findings'],
+            correlated_count=correlation_results['correlated_count'],
+            critical_count=correlation_results.get('critical', 0),
+            high_count=correlation_results.get('high', 0),
+            medium_count=correlation_results.get('medium', 0),
+            low_count=correlation_results.get('low', 0)
+        )
+        db.add(scan)
+        db.flush()
+        
+        print(f"  ✅ Created scan #{scan.id} for commit {commit_info['hash'][:8]}")
+        
+        # Track vulnerabilities
+        tracker = VulnerabilityLifecycleTracker(db, git_analyzer)
+        lifecycle_results = tracker.process_scan_results(
+            scan.id,
+            correlation_results['findings'],
+            commit_info['hash']
+        )
+        
+        db.commit()
+        
+        print(f"\n📈 Lifecycle Analysis:")
+        print(f"  🆕 New vulnerabilities: {len(lifecycle_results['new'])}")
+        print(f"  ♻️  Existing vulnerabilities: {len(lifecycle_results['existing'])}")
+        print(f"  ✅ Fixed vulnerabilities: {len(lifecycle_results['fixed'])}")
+        print(f"  ⚠️  Regressed vulnerabilities: {len(lifecycle_results['regressed'])}")
+        
+        # Calculate risk scores
+        from app.services.behavior.risk_scorer import RiskScorer
+        scorer = RiskScorer()
+        
+        high_risk = []
+        for vuln_list in [lifecycle_results['new'], lifecycle_results['existing'], lifecycle_results['regressed']]:
+            for vuln in vuln_list:
+                if vuln.risk_score >= 7.0:
+                    high_risk.append(vuln)
+        
+        if high_risk:
+            print(f"\n⚠️  HIGH RISK VULNERABILITIES: {len(high_risk)}")
+            for vuln in sorted(high_risk, key=lambda v: v.risk_score, reverse=True)[:5]:
+                risk_cat = scorer.get_risk_category(vuln.risk_score)
+                print(f"  - {vuln.type} (Risk: {vuln.risk_score:.1f} - {risk_cat})")
+                print(f"    {vuln.file_path}:{vuln.line_number}")
+        
+        # Run pattern analysis
+        print(f"\n🎯 Analyzing security patterns...")
+        from app.services.behavior.pattern_analyzer import PatternAnalyzer
+        analyzer = PatternAnalyzer(db)
+        patterns = analyzer.analyze_patterns()
+        
+        print(f"  ✅ Detected {len(patterns['patterns_found'])} patterns")
+        print(f"  🔥 Found {len(patterns['hotspots'])} security hotspots")
+        print(f"  🔗 Identified {len(patterns['clusters'])} vulnerability clusters")
+        
+        # Save combined results
+        if args.output:
+            combined_results = {
+                'phase1_correlation': correlation_results,
+                'phase2_lifecycle': {
+                    'scan_id': scan.id,
+                    'commit': commit_info,
+                    'new': len(lifecycle_results['new']),
+                    'existing': len(lifecycle_results['existing']),
+                    'fixed': len(lifecycle_results['fixed']),
+                    'regressed': len(lifecycle_results['regressed'])
+                },
+                'phase2_patterns': {
+                    'patterns': len(patterns['patterns_found']),
+                    'hotspots': len(patterns['hotspots']),
+                    'clusters': len(patterns['clusters'])
+                },
+                'high_risk_count': len(high_risk)
+            }
+            
+            output_path = Path(args.output)
+            output_path.write_text(json.dumps(combined_results, indent=2))
+            print(f"\n💾 Results saved to: {args.output}")
+        
+        # Generate enhanced dashboard if requested
+        if args.dashboard:
+            print(f"\n📊 Generating enhanced dashboard...")
+            from app.services.dashboard_generator import DashboardGenerator
+            
+            generator = DashboardGenerator(include_behavior_analysis=True)
+            dashboard_html = generator.generate(correlation_results)
+            
+            dashboard_path = Path(args.dashboard)
+            dashboard_path.write_text(dashboard_html, encoding='utf-8')
+            print(f"  ✅ Enhanced dashboard: {args.dashboard}")
+    
+    print("\n✅ Phase 1 + Phase 2 Integration Complete!")
 
 
 def cli_database(args):
@@ -423,6 +578,42 @@ def main():
         default="security-dashboard.html",
         help="Output HTML file path"
     )
+    dashboard_parser.add_argument(
+        "--behavior",
+        action="store_true",
+        help="Include Phase 2 behavior analysis (requires database)"
+    )
+    
+    # Integrate command (Phase 1 + Phase 2)
+    integrate_parser = subparsers.add_parser(
+        "integrate",
+        help="Run Phase 1 correlation + Phase 2 behavior tracking"
+    )
+    integrate_parser.add_argument(
+        "--semgrep",
+        help="Path to Semgrep SARIF file"
+    )
+    integrate_parser.add_argument(
+        "--codeql",
+        help="Path to CodeQL results directory"
+    )
+    integrate_parser.add_argument(
+        "--zap",
+        help="Path to ZAP JSON file"
+    )
+    integrate_parser.add_argument(
+        "--repo",
+        default=".",
+        help="Path to git repository (default: current directory)"
+    )
+    integrate_parser.add_argument(
+        "--output",
+        help="Output JSON file for combined results"
+    )
+    integrate_parser.add_argument(
+        "--dashboard",
+        help="Generate enhanced dashboard HTML file"
+    )
     
     # Database command (Phase 2)
     db_parser = subparsers.add_parser(
@@ -441,6 +632,8 @@ def main():
         cli_correlate(args)
     elif args.command == "dashboard":
         cli_dashboard(args)
+    elif args.command == "integrate":
+        cli_integrate(args)
     elif args.command == "db":
         cli_database(args)
     else:

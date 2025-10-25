@@ -1,0 +1,540 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Correlation Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Security Correlation Dashboard</h1>
+            <p class="text-gray-600">Generated on 2025-10-25 14:41:14</p>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Total Findings</div>
+                <div class="text-3xl font-bold text-gray-800">15</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Correlated</div>
+                <div class="text-3xl font-bold text-blue-600">10</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Critical + High</div>
+                <div class="text-3xl font-bold text-red-600">4</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Correlation Rate</div>
+                <div class="text-3xl font-bold text-green-600">
+                    66%
+                </div>
+            </div>
+        </div>
+
+        <!-- Severity Breakdown -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-4">Severity Distribution</h2>
+                <canvas id="severityChart"></canvas>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-4">Severity Breakdown</h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-purple-600 font-semibold">Critical</span>
+                        <span class="text-2xl font-bold">1</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-red-600 font-semibold">High</span>
+                        <span class="text-2xl font-bold">3</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-yellow-600 font-semibold">Medium</span>
+                        <span class="text-2xl font-bold">4</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-blue-600 font-semibold">Low</span>
+                        <span class="text-2xl font-bold">2</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <!-- Phase 2: Behavior Analysis -->
+        <div class="bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg shadow-lg p-6 mb-6 text-white">
+            <h2 class="text-2xl font-bold mb-2">🔍 Security Behavior Analysis (Phase 2)</h2>
+            <p class="text-blue-100">Lifecycle tracking, risk scoring, and pattern detection</p>
+        </div>
+        
+        <!-- Phase 2 Metrics -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Total Scans</div>
+                <div class="text-3xl font-bold text-gray-800">25</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Tracked Vulnerabilities</div>
+                <div class="text-3xl font-bold text-blue-600">69</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">High Risk (7.0+)</div>
+                <div class="text-3xl font-bold text-red-600">38</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-1">Avg Risk Score</div>
+                <div class="text-3xl font-bold text-purple-600">6.43</div>
+            </div>
+        </div>
+        
+        <!-- Trends and State Distribution -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-4">Vulnerability Trends</h2>
+                <canvas id="trendChart"></canvas>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-4">Lifecycle State Distribution</h2>
+                <canvas id="stateChart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Security Patterns -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">🎯 Detected Security Patterns</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">Controller Layer Security Issues</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">68</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">Multiple vulnerabilities concentrated in controller/API layer</p>
+                    <p class="text-xs text-gray-500">Review API security patterns. Consider middleware for common security checks....</p>
+                </div>
+            
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">SQL Injection in Controllers</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">23</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">SQL injection vulnerabilities found in controller/endpoint classes</p>
+                    <p class="text-xs text-gray-500">Use parameterized queries or ORM. Never concatenate user input into SQL....</p>
+                </div>
+            
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">Injection Vulnerability Pattern</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">23</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">Multiple types of injection vulnerabilities (SQL, command, etc.)</p>
+                    <p class="text-xs text-gray-500">Use safe APIs that avoid interpreters or provide parameterized interfaces....</p>
+                </div>
+            
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">IDOR in Authorization Layer</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">20</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">Insecure Direct Object Reference in authorization/security classes</p>
+                    <p class="text-xs text-gray-500">Always validate that the authenticated user owns the requested resource....</p>
+                </div>
+            
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">Missing Input Validation</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">4</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">Multiple vulnerabilities caused by insufficient input validation</p>
+                    <p class="text-xs text-gray-500">Implement comprehensive input validation at API boundaries....</p>
+                </div>
+            
+                <div class="bg-white border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-semibold text-gray-800">Data Access Security Issues</h3>
+                        <span class="px-2 py-1 bg-red-100 text-red-800 rounded text-sm">1</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2">Vulnerabilities in data access layer (repositories, DAOs)</p>
+                    <p class="text-xs text-gray-500">Ensure data access layer enforces authorization and uses safe query methods....</p>
+                </div>
+            
+            </div>
+        </div>
+        
+        <!-- Hotspots -->
+        
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">🔥 Security Hotspots</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-red-600 uppercase font-semibold">directory Hotspot</span>
+                        <span class="px-2 py-1 bg-red-600 text-white rounded text-sm">66</span>
+                    </div>
+                    <p class="text-sm font-mono text-gray-800 mb-1">src\main\java\com\security\controller</p>
+                    <p class="text-xs text-gray-600">Combined Risk: 0.0</p>
+                </div>
+            
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-red-600 uppercase font-semibold">file Hotspot</span>
+                        <span class="px-2 py-1 bg-red-600 text-white rounded text-sm">20</span>
+                    </div>
+                    <p class="text-sm font-mono text-gray-800 mb-1">src/main/java/com/security/controller/Controller0.java</p>
+                    <p class="text-xs text-gray-600">Combined Risk: 0.0</p>
+                </div>
+            
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-red-600 uppercase font-semibold">file Hotspot</span>
+                        <span class="px-2 py-1 bg-red-600 text-white rounded text-sm">16</span>
+                    </div>
+                    <p class="text-sm font-mono text-gray-800 mb-1">src/main/java/com/security/controller/Controller1.java</p>
+                    <p class="text-xs text-gray-600">Combined Risk: 0.0</p>
+                </div>
+            
+            </div>
+        </div>
+        
+        
+        <!-- Top Risk Vulnerabilities -->
+        <div class="bg-white rounded-lg shadow overflow-hidden mb-6">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-bold">⚠️ Top Risk Vulnerabilities</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Risk Score</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">State</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Age</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/UserController.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">15d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/UserController.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">15d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            new
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">0d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">2d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">4d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            new
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">0d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">2d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">4d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            new
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">0d</td>
+                </tr>
+            
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3 font-medium">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">
+                            8.5
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">src/main/java/com/security/controller/Controller0.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                            existing
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">2d</td>
+                </tr>
+            
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+
+        <!-- Findings Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-xl font-bold">Correlated Findings</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Severity</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Line</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sources</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Flow</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-4 py-3">SQL Injection</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded text-sm bg-red-100 text-red-800">
+                            HIGH
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-sm">UserController.java</td>
+                    <td class="px-4 py-3">45</td>
+                    <td class="px-4 py-3 text-sm">Semgrep, CodeQL</td>
+                    <td class="px-4 py-3 text-center">90%</td>
+                    <td class="px-4 py-3 text-center text-lg">✓</td>
+                </tr>
+            
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Severity Chart
+        const ctx = document.getElementById('severityChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Critical', 'High', 'Medium', 'Low'],
+                datasets: [{
+                    data: [1, 3, 4, 2],
+                    backgroundColor: ['#9333ea', '#dc2626', '#eab308', '#3b82f6']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true
+            }
+        });
+        
+        
+        // Trend Chart
+        const trendCtx = document.getElementById('trendChart').getContext('2d');
+        new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: ['2025-10-21 14:41', '2025-10-23 14:37', '2025-10-23 14:40', '2025-10-23 14:40', '2025-10-23 14:41', '2025-10-25 08:48', '2025-10-25 08:48', '2025-10-25 08:48', '2025-10-25 14:26', '2025-10-25 14:27'],
+                datasets: [
+                    {
+                        label: 'Critical',
+                        data: [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+                        borderColor: '#9333ea',
+                        backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'High',
+                        data: [1, 0, 0, 0, 0, 0, 1, 0, 1, 1],
+                        borderColor: '#dc2626',
+                        backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Medium',
+                        data: [0, 0, 0, 0, 0, 0, 0, 2, 1, 1],
+                        borderColor: '#eab308',
+                        backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Low',
+                        data: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        
+        // State Chart
+        const stateCtx = document.getElementById('stateChart').getContext('2d');
+        new Chart(stateCtx, {
+            type: 'pie',
+            data: {
+                labels: ['new', 'existing', 'fixed', 'regressed', 'ignored'],
+                datasets: [{
+                    data: [22, 36, 11, 0, 0],
+                    backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#6b7280']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+    </script>
+</body>
+</html>
+        
