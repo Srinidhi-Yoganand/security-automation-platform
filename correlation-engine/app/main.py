@@ -174,6 +174,41 @@ def cli_dashboard(args):
     print(f"✅ Dashboard generated: {args.output}")
 
 
+def cli_database(args):
+    """Handle database operations"""
+    from app.database import init_db, drop_db, engine
+    from app.models import Base
+    
+    if args.action == "init":
+        print("🔧 Initializing database...")
+        init_db()
+        
+    elif args.action == "reset":
+        print("⚠️  Resetting database (this will delete all data)...")
+        response = input("Are you sure? (yes/no): ")
+        if response.lower() == "yes":
+            drop_db()
+            init_db()
+            print("✅ Database reset complete")
+        else:
+            print("❌ Operation cancelled")
+            
+    elif args.action == "status":
+        print("📊 Database status:")
+        print(f"   Engine: {engine.url}")
+        print(f"   Tables: {', '.join(Base.metadata.tables.keys())}")
+        
+        # Check if tables exist
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        if existing_tables:
+            print(f"   Initialized: ✅ ({len(existing_tables)} tables found)")
+        else:
+            print(f"   Initialized: ❌ (run 'db init' to create tables)")
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -220,12 +255,25 @@ def main():
         help="Output HTML file path"
     )
     
+    # Database command (Phase 2)
+    db_parser = subparsers.add_parser(
+        "db",
+        help="Database operations"
+    )
+    db_parser.add_argument(
+        "action",
+        choices=["init", "reset", "status"],
+        help="Database action to perform"
+    )
+    
     args = parser.parse_args()
     
     if args.command == "correlate":
         cli_correlate(args)
     elif args.command == "dashboard":
         cli_dashboard(args)
+    elif args.command == "db":
+        cli_database(args)
     else:
         parser.print_help()
 

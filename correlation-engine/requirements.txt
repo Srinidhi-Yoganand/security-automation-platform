@@ -15,6 +15,9 @@ psycopg2-binary==2.9.9
 pandas==2.1.3
 numpy==1.26.2
 
+# Git integration (Phase 2)
+gitpython==3.1.40
+
 # Security scanning result parsers
 sarif-om==1.0.4
 defusedxml==0.7.1
