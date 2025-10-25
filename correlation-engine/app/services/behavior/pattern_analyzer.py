@@ -43,7 +43,7 @@ class PatternAnalyzer:
             'name': 'Missing Input Validation',
             'description': 'Multiple vulnerabilities caused by insufficient input validation',
             'category': 'anti-pattern',
-            'detection': lambda v: any(keyword in v.message.lower() for keyword in ['validation', 'sanitiz', 'input', 'user-provided']),
+            'detection': lambda v: v.message and any(keyword in v.message.lower() for keyword in ['validation', 'sanitiz', 'input', 'user-provided']),
             'severity': 'medium',
             'remediation': 'Implement comprehensive input validation at API boundaries.'
         },
