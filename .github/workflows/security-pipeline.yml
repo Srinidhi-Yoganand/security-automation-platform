@@ -1,15 +1,24 @@
-name: Security Automation Pipeline
+name: Security Automation Pipeline with AI Patching
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM
   workflow_dispatch:
+    inputs:
+      auto_apply_patches:
+        description: 'Auto-apply generated patches'
+        required: false
+        default: 'false'
+        type: boolean
 
 env:
   JAVA_VERSION: '17'
   MAVEN_OPTS: -Xmx2g
+  OLLAMA_HOST: http://localhost:11434
 
 jobs:
   # Job 1: Build the vulnerable application
@@ -194,12 +203,23 @@ jobs:
           kill $(cat app/app.pid) || true
         fi
 
-  # Job 5: Correlate results using the correlation engine
-  correlate:
-    name: Correlate Security Findings
+  # Job 5: Correlate results and generate AI patches
+  correlate-and-patch:
+    name: Correlate & Generate AI Patches
     runs-on: ubuntu-latest
     needs: [sast-semgrep, sast-codeql, dast-zap]
     if: always()
+    
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+        options: >-
+          --health-cmd "curl -f http://localhost:11434/api/tags || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
     
     steps:
     - name: Checkout code
@@ -208,7 +228,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
         cache: 'pip'
         
     - name: Download all scan results
@@ -221,6 +241,14 @@ jobs:
         cd correlation-engine
         pip install -r requirements.txt
         
+    - name: Setup Ollama with DeepSeek
+      run: |
+        # Pull DeepSeek Coder model
+        docker exec ${{ job.services.ollama.id }} ollama pull deepseek-coder:6.7b
+        
+        # Verify model is available
+        docker exec ${{ job.services.ollama.id }} ollama list
+        
     - name: Run correlation analysis
       run: |
         cd correlation-engine
@@ -230,11 +258,62 @@ jobs:
           --zap ../scan-results/zap-results/*.json \
           --output ../correlation-report.json
           
+    - name: Generate AI-powered patches
+      env:
+        OLLAMA_HOST: http://localhost:11434
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: |
+        cd correlation-engine
+        
+        # Generate patches for all vulnerabilities
+        python -c "
+        import json
+        import sys
+        from app.services.patcher.llm_patch_generator import LLMPatchGenerator
+        
+        # Load correlation results
+        with open('../correlation-report.json', 'r') as f:
+            report = json.load(f)
+        
+        generator = LLMPatchGenerator()
+        patches = []
+        
+        # Generate patches for high/critical vulnerabilities
+        for vuln in report.get('vulnerabilities', []):
+            if vuln.get('severity') in ['HIGH', 'CRITICAL']:
+                try:
+                    patch = generator.generate_patch(
+                        vuln_id=vuln['id'],
+                        vuln_type=vuln['type'],
+                        file_path=vuln['file'],
+                        line_number=vuln.get('line', 0),
+                        code_snippet=vuln.get('code', ''),
+                        description=vuln.get('description', '')
+                    )
+                    patches.append(patch)
+                except Exception as e:
+                    print(f'Failed to generate patch for {vuln[\"id\"]}: {e}')
+        
+        # Save patches
+        with open('../patches.json', 'w') as f:
+            json.dump(patches, f, indent=2)
+        
+        print(f'Generated {len(patches)} patches')
+        "
+          
     - name: Upload correlation report
       uses: actions/upload-artifact@v4
       with:
         name: correlation-report
         path: correlation-report.json
+        retention-days: 30
+        
+    - name: Upload generated patches
+      uses: actions/upload-artifact@v4
+      with:
+        name: ai-patches
+        path: patches.json
         retention-days: 30
         
     - name: Generate security dashboard
@@ -258,13 +337,19 @@ jobs:
         script: |
           const fs = require('fs');
           const report = JSON.parse(fs.readFileSync('correlation-report.json', 'utf8'));
+          const patches = JSON.parse(fs.readFileSync('patches.json', 'utf8'));
           
-          const comment = `## Security Scan Results
+          const comment = `## 🔒 Security Scan Results
           
-          **Total Findings:** ${report.total_findings}
-          **Critical:** ${report.critical} | **High:** ${report.high} | **Medium:** ${report.medium} | **Low:** ${report.low}
+          **Total Findings:** ${report.total_findings || 0}
+          **Critical:** ${report.critical || 0} | **High:** ${report.high || 0} | **Medium:** ${report.medium || 0} | **Low:** ${report.low || 0}
           
-          **Correlated Vulnerabilities:** ${report.correlated_count}
+          **Correlated Vulnerabilities:** ${report.correlated_count || 0}
+          **AI Patches Generated:** ${patches.length}
+          
+          ### 🤖 AI-Powered Patches Available
+          ${patches.slice(0, 3).map(p => `- **${p.vuln_type}** in \`${p.file_path}\` (Confidence: ${p.confidence})`).join('\n')}
+          ${patches.length > 3 ? `\n... and ${patches.length - 3} more` : ''}
           
           [View Full Dashboard](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
           `;
@@ -275,3 +360,199 @@ jobs:
             repo: context.repo.repo,
             body: comment
           });
+
+  # Job 6: Test patches automatically
+  test-patches:
+    name: Test AI-Generated Patches
+    runs-on: ubuntu-latest
+    needs: correlate-and-patch
+    if: always() && needs.correlate-and-patch.result == 'success'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        cache: maven
+        
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Download patches
+      uses: actions/download-artifact@v4
+      with:
+        name: ai-patches
+        path: ./
+        
+    - name: Install correlation engine
+      run: |
+        cd correlation-engine
+        pip install -r requirements.txt
+        
+    - name: Apply patches to test branch
+      run: |
+        # Create test branch
+        git config user.name "GitHub Actions Bot"
+        git config user.email "actions@github.com"
+        git checkout -b test-patches-${{ github.run_id }}
+        
+        cd correlation-engine
+        python -c "
+        import json
+        from app.services.patcher.patch_generator import PatchGenerator
+        
+        with open('../patches.json', 'r') as f:
+            patches = json.load(f)
+        
+        patcher = PatchGenerator()
+        applied = 0
+        failed = 0
+        
+        for patch in patches:
+            try:
+                # Apply patch
+                result = patcher.apply_patch(
+                    file_path=patch['file_path'],
+                    original_code=patch['original_code'],
+                    patched_code=patch['patched_code']
+                )
+                if result['success']:
+                    applied += 1
+                else:
+                    failed += 1
+                    print(f'Failed to apply patch: {result.get(\"error\")}')
+            except Exception as e:
+                failed += 1
+                print(f'Error applying patch: {e}')
+        
+        print(f'Applied {applied} patches, {failed} failed')
+        "
+        
+    - name: Run tests after patching
+      working-directory: ./vulnerable-app
+      run: |
+        mvn clean test || echo "Tests completed with status $?"
+        
+    - name: Run security scan on patched code
+      run: |
+        pip install semgrep
+        semgrep --config p/security-audit --config p/java \
+          --sarif --output patched-semgrep.sarif .
+        
+    - name: Compare before/after results
+      run: |
+        python -c "
+        import json
+        
+        # Load original results
+        with open('scan-results/semgrep-results/semgrep.sarif', 'r') as f:
+            original = json.load(f)
+        
+        # Load patched results
+        with open('patched-semgrep.sarif', 'r') as f:
+            patched = json.load(f)
+        
+        original_count = len(original.get('runs', [{}])[0].get('results', []))
+        patched_count = len(patched.get('runs', [{}])[0].get('results', []))
+        
+        improvement = original_count - patched_count
+        percentage = (improvement / original_count * 100) if original_count > 0 else 0
+        
+        print(f'Original vulnerabilities: {original_count}')
+        print(f'After patching: {patched_count}')
+        print(f'Improvement: {improvement} ({percentage:.1f}%)')
+        
+        # Save comparison
+        with open('patch-comparison.json', 'w') as f:
+            json.dump({
+                'original_count': original_count,
+                'patched_count': patched_count,
+                'improvement': improvement,
+                'improvement_percentage': percentage
+            }, f, indent=2)
+        "
+        
+    - name: Upload patch comparison
+      uses: actions/upload-artifact@v4
+      with:
+        name: patch-comparison
+        path: patch-comparison.json
+        retention-days: 30
+        
+    - name: Upload patched scan results
+      uses: actions/upload-artifact@v4
+      with:
+        name: patched-scan-results
+        path: patched-semgrep.sarif
+        retention-days: 30
+        
+    - name: Create PR for patches
+      if: ${{ github.event.inputs.auto_apply_patches == 'true' || github.event_name == 'schedule' }}
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "🤖 Apply AI-generated security patches"
+        title: "🔒 Automated Security Patches - Run ${{ github.run_id }}"
+        body: |
+          ## 🤖 AI-Generated Security Patches
+          
+          This PR contains automatically generated patches for security vulnerabilities.
+          
+          **Patches Applied:** See artifact `ai-patches`
+          **Test Results:** See artifact `patch-comparison`
+          
+          ### ⚠️ Review Required
+          - [ ] Review all code changes
+          - [ ] Verify test results
+          - [ ] Check for regressions
+          - [ ] Approve and merge if satisfactory
+          
+          **Generated by:** GitHub Actions
+          **Workflow Run:** ${{ github.run_id }}
+        branch: automated-patches-${{ github.run_id }}
+        base: main
+        labels: security, automated, patches
+
+  # Job 7: Deploy to Docker Hub
+  deploy:
+    name: Deploy to Docker Hub
+    runs-on: ubuntu-latest
+    needs: test-patches
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        
+    - name: Build and push
+      uses: docker/build-push-action@v5
+      with:
+        context: ./correlation-engine
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/security-automation:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/security-automation:buildcache,mode=max
+        
+    - name: Update deployment status
+      run: |
+        echo "✅ Deployed to Docker Hub"
+        echo "Image: ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:latest"
+

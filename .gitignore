@@ -1,17 +1,3 @@
-# Java
-*.class
-*.jar
-*.war
-*.ear
-target/
-build/
-.gradle/
-.idea/
-*.iml
-*.iws
-*.ipr
-out/
-
 # Python
 __pycache__/
 *.py[cod]
@@ -21,27 +7,50 @@ __pycache__/
 venv/
 env/
 .venv/
-pip-log.txt
-.pytest_cache/
-.coverage
-htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # IDEs
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
-logs/
 
-# Security scan results
-scan-results/
-*.sarif
-*.json
-
-# Sensitive files
+# Environment
 .env
-application-local.properties
+.env.local
 
-# Node modules (for any JS tooling)
-node_modules/
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# Docker
+.dockerignore
+
+# Test outputs
+test-data/*.html
+test-data/*.json
+!test-data/semgrep-results.sarif
+!test-data/zap-results.json
+
+# Temporary files
+*.tmp
+*.temp

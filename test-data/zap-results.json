@@ -1,0 +1,71 @@
+{
+  "site": [
+    {
+      "@name": "http://localhost:8080",
+      "@host": "localhost",
+      "@port": "8080",
+      "@ssl": "false",
+      "alerts": [
+        {
+          "pluginid": "40018",
+          "alertRef": "40018",
+          "alert": "SQL Injection",
+          "name": "SQL Injection",
+          "riskcode": "3",
+          "confidence": "2",
+          "riskdesc": "High (Medium)",
+          "desc": "SQL injection may be possible. User-controlled input is incorporated into SQL queries without proper sanitization.",
+          "instances": [
+            {
+              "uri": "http://localhost:8080/api/users/search?username=%25",
+              "method": "GET",
+              "param": "username",
+              "attack": "%",
+              "evidence": "SELECT * FROM users WHERE username LIKE '%"
+            }
+          ],
+          "count": "1",
+          "solution": "Use parameterized queries or prepared statements to prevent SQL injection.",
+          "otherinfo": "The page results were successfully manipulated using the boolean conditions [%] The parameter value being modified was NOT stripped from the HTML output for the purposes of the comparison",
+          "reference": "https://owasp.org/www-community/attacks/SQL_Injection",
+          "cweid": "89",
+          "wascid": "19",
+          "sourceid": "1"
+        },
+        {
+          "pluginid": "10202",
+          "alertRef": "10202",
+          "alert": "Insecure Direct Object Reference",
+          "name": "Insecure Direct Object Reference",
+          "riskcode": "2",
+          "confidence": "2",
+          "riskdesc": "Medium (Medium)",
+          "desc": "The application allows users to access resources by directly referencing object IDs without proper authorization checks.",
+          "instances": [
+            {
+              "uri": "http://localhost:8080/api/users/2",
+              "method": "GET",
+              "param": "userId",
+              "attack": "2",
+              "evidence": "User alice accessed user bob's data including SSN"
+            },
+            {
+              "uri": "http://localhost:8080/api/companies/2/orders/1",
+              "method": "GET",
+              "param": "companyId",
+              "attack": "2",
+              "evidence": "User accessed order through incorrect company context"
+            }
+          ],
+          "count": "2",
+          "solution": "Implement proper authorization checks that validate resource ownership and access context.",
+          "otherinfo": "Multiple IDOR vulnerabilities detected in user and order endpoints",
+          "reference": "https://owasp.org/www-community/attacks/Insecure_Direct_Object_Reference",
+          "cweid": "639",
+          "wascid": "2",
+          "sourceid": "1"
+        }
+      ]
+    }
+  ]
+}
