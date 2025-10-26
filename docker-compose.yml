@@ -1,14 +1,38 @@
 version: '3.8'
 
+# ==============================================================
+# SECURITY AUTOMATION PLATFORM - PLUGGABLE CONFIGURATION
+# ==============================================================
+# This setup allows you to scan ANY application by mounting
+# its directory into the correlation-engine container.
+#
+# Usage:
+#   1. Set TARGET_APP_PATH environment variable to your app's directory
+#   2. Run: docker-compose up -d
+#   3. Scan via API or CLI
+#
+# Example:
+#   TARGET_APP_PATH=./my-java-app docker-compose up -d
+#   curl -X POST http://localhost:8000/api/scan -d '{"path": "/target-app"}'
+# ==============================================================
+
 services:
-  # Ollama LLM Service (DeepSeek Coder)
+  # Ollama LLM for AI-powered patch generation
   ollama:
     image: ollama/ollama:latest
     container_name: security-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama-models:/root/.ollama
+    networks:
+      - security-automation-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
     deploy:
       resources:
@@ -16,67 +40,70 @@ services:
           memory: 12G
         reservations:
           memory: 8G
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
-  # Correlation Engine API
+  # Security Automation Platform (Correlation Engine)
   correlation-engine:
-    build: 
-      context: ./correlation-engine
-      dockerfile: Dockerfile
+    image: srinidhiyoganand/security-automation:latest
     container_name: security-correlation
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount YOUR application directory here
+      # Change TARGET_APP_PATH to point to your application
+      - ${TARGET_APP_PATH:-.}:/target-app:ro
+      # Persist scan results and patches
+      - correlation-data:/app/data
+      - ./test-data:/app/test-data
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_PROVIDER=ollama
       - OLLAMA_MODEL=deepseek-coder:6.7b-instruct
-      - DATABASE_URL=sqlite:///./security.db
+      - DATABASE_URL=sqlite:///./data/security.db
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - TARGET_APP_PATH=/target-app
+    networks:
+      - security-automation-network
     depends_on:
       ollama:
         condition: service_healthy
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./test-data:/app/test-data
-      - ./vulnerable-app:/app/vulnerable-app
-      - correlation_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
     command: >
       sh -c "
-        echo 'Waiting for Ollama to be ready...' &&
-        sleep 10 &&
-        python -c 'import ollama; ollama.pull(\"deepseek-coder:6.7b-instruct\")' || true &&
+        echo '🚀 Security Automation Platform Starting...'
+        echo '📁 Target Application: /target-app'
+        echo '🤖 LLM Provider: Ollama (DeepSeek Coder)'
+        echo ''
+        echo 'Waiting for Ollama and pulling model...'
+        sleep 10
+        python -c 'import ollama; ollama.pull(\"deepseek-coder:6.7b-instruct\")' || true
+        echo ''
+        echo '✅ Platform Ready!'
+        echo ''
+        echo 'API Endpoints:'
+        echo '  - Health: http://localhost:8000/health'
+        echo '  - Scan: POST http://localhost:8000/api/scan'
+        echo '  - Generate Patches: POST http://localhost:8000/api/patches/generate'
+        echo '  - Dashboard: GET http://localhost:8000/api/dashboard'
+        echo ''
+        echo 'CLI Usage (inside container):'
+        echo '  docker exec security-correlation python api_client.py scan /target-app'
+        echo ''
         uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
 
-  # ==============================================================
-  # VULNERABLE APP - FOR TESTING ONLY (NOT FOR PRODUCTION)
-  # ==============================================================
-  # This is a deliberately vulnerable Java app used for testing
-  # the security scanning and patching features.
-  # 
-  # DO NOT include this in production deployments!
-  # Comment out or remove this service when deploying for real use.
-  # ==============================================================
-  
-  # vulnerable-app:
-  #   build:
-  #     context: ./vulnerable-app
-  #     dockerfile: Dockerfile
-  #   container_name: security-vulnerable-app
-  #   ports:
-  #     - "8080:8080"
-  #   restart: unless-stopped
-
 volumes:
-  ollama_data:
+  ollama-models:
     name: security-ollama-models
-  correlation_data:
+  correlation-data:
     name: security-correlation-data
 
 networks:
-  default:
+  security-automation-network:
     name: security-automation-network
+    driver: bridge

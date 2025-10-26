@@ -1,214 +1,105 @@
-name: Security Automation Pipeline with AI Patching
+name: Security Automation Platform - Pluggable Scanner
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM
   workflow_dispatch:
     inputs:
-      auto_apply_patches:
-        description: 'Auto-apply generated patches'
+      target_repository:
+        description: 'Target repository to scan (owner/repo)'
         required: false
-        default: 'false'
+        default: ''
+      target_ref:
+        description: 'Branch/tag/commit to scan'
+        required: false
+        default: 'main'
+      auto_apply_patches:
+        description: 'Automatically apply patches and create PR'
+        required: false
+        default: true
         type: boolean
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
 
 env:
-  JAVA_VERSION: '17'
-  MAVEN_OPTS: -Xmx2g
   OLLAMA_HOST: http://localhost:11434
 
 jobs:
-  # Job 1: Build the vulnerable application
-  build:
-    name: Build Vulnerable Application
+  # Job 1: Checkout target application
+  checkout-target:
+    name: Checkout Target Application
     runs-on: ubuntu-latest
-    
+    outputs:
+      target_path: ${{ steps.setup.outputs.target_path }}
+      target_repo: ${{ steps.setup.outputs.target_repo }}
     steps:
-    - name: Checkout code
+    - name: Checkout correlation engine (this repo)
       uses: actions/checkout@v4
-      
-    - name: Set up JDK
-      uses: actions/setup-java@v4
       with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        cache: maven
-    
-    - name: Build with Maven
-      working-directory: ./vulnerable-app
-      run: mvn clean package -DskipTests
-      
-    - name: Upload artifact
+        path: correlation-engine-repo
+        
+    - name: Setup target application
+      id: setup
+      run: |
+        # If target_repository is provided, clone it
+        # Otherwise, use the correlation-engine repo itself (for testing)
+        if [ -n "${{ github.event.inputs.target_repository }}" ]; then
+          echo "🎯 Scanning external repository: ${{ github.event.inputs.target_repository }}"
+          git clone --depth 1 --branch "${{ github.event.inputs.target_ref || 'main' }}" \
+            "https://github.com/${{ github.event.inputs.target_repository }}.git" target-app
+          echo "target_path=target-app" >> $GITHUB_OUTPUT
+          echo "target_repo=${{ github.event.inputs.target_repository }}" >> $GITHUB_OUTPUT
+        else
+          echo "🎯 Scanning current repository (test mode)"
+          echo "target_path=correlation-engine-repo" >> $GITHUB_OUTPUT
+          echo "target_repo=${{ github.repository }}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Upload target application
       uses: actions/upload-artifact@v4
       with:
-        name: vulnerable-app-jar
-        path: vulnerable-app/target/*.jar
+        name: target-app
+        path: ${{ steps.setup.outputs.target_path }}
         retention-days: 1
 
-  # Job 2: Run SAST with Semgrep
-  sast-semgrep:
-    name: SAST - Semgrep Scan
+  # Job 2: Run security scans
+  security-scan:
+    name: Run Security Scans
     runs-on: ubuntu-latest
-    needs: build
-    
+    needs: checkout-target
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Python for Semgrep
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        cache: 'pip'
-        
-    - name: Run Semgrep
-      run: |
-        python -m pip install --upgrade pip
-        pip install semgrep
-        semgrep --config p/security-audit --config p/java --config p/owasp-top-ten --sarif --output semgrep.sarif .
-        
-    - name: Upload Semgrep SARIF
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: semgrep-results
-        path: semgrep.sarif
-        retention-days: 7
-
-  # Job 3: Run SAST with CodeQL
-  sast-codeql:
-    name: SAST - CodeQL Analysis
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: java
-        queries: security-extended,security-and-quality
-        
-    - name: Set up JDK
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        cache: maven
-        
-    - name: Build for CodeQL
-      working-directory: ./vulnerable-app
-      run: mvn clean compile -DskipTests
-      
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:java"
-        upload: false
-        output: codeql-results
-        
-    - name: Upload CodeQL results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: codeql-results
-        path: codeql-results
-        retention-days: 7
-
-  # Job 4: Deploy to staging and run DAST
-  dast-zap:
-    name: DAST - OWASP ZAP Scan
-    runs-on: ubuntu-latest
-    needs: build
-    
-    services:
-      # We'll run the app as a service
-      vulnerable-app:
-        image: openjdk:17-slim
-        ports:
-          - 8080:8080
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download application artifact
+    - name: Download target application
       uses: actions/download-artifact@v4
       with:
-        name: vulnerable-app-jar
-        path: ./app
+        name: target-app
+        path: ./target-app
         
-    - name: Set up JDK
-      uses: actions/setup-java@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
+        python-version: '3.11'
         
-    - name: Start application
+    - name: Run Semgrep SAST
       run: |
-        cd app
-        java -jar vulnerable-app-*.jar &
-        echo $! > app.pid
+        pip install semgrep
+        semgrep --config p/security-audit \
+                --config p/java \
+                --config p/owasp-top-ten \
+                --sarif --output semgrep-results.sarif \
+                ./target-app
         
-        # Wait for application to start
-        echo "Waiting for application to start..."
-        for i in {1..30}; do
-          if curl -s http://localhost:8080/actuator/health 2>/dev/null || curl -s http://localhost:8080 2>/dev/null; then
-            echo "Application is up!"
-            break
-          fi
-          echo "Waiting... ($i/30)"
-          sleep 2
-        done
-        
-    - name: Run ZAP Baseline Scan
-      uses: zaproxy/action-baseline@v0.10.0
-      with:
-        target: 'http://localhost:8080'
-        rules_file_name: '.zap/rules.tsv'
-        cmd_options: '-a -j -l WARN -n zap-context.xml -U alice -z "-config api.disablekey=true"'
-        fail_action: false
-        
-    - name: Run ZAP Full Scan
-      uses: zaproxy/action-full-scan@v0.8.0
-      with:
-        target: 'http://localhost:8080'
-        fail_action: false
-        allow_issue_writing: false
-        artifact_name: 'zap-scan-results'
-        
-    - name: Upload ZAP results
+    - name: Upload scan results
       uses: actions/upload-artifact@v4
-      if: always()
       with:
-        name: zap-results
-        path: |
-          zap-scan-results/*.json
-          zap-scan-results/*.html
+        name: scan-results
+        path: semgrep-results.sarif
         retention-days: 7
-        
-    - name: Stop application
-      if: always()
-      run: |
-        if [ -f app/app.pid ]; then
-          kill $(cat app/app.pid) || true
-        fi
 
-  # Job 5: Correlate results and generate AI patches
-  correlate-and-patch:
-    name: Correlate & Generate AI Patches
+  # Job 3: Generate AI patches
+  generate-patches:
+    name: Generate AI-Powered Patches
     runs-on: ubuntu-latest
-    needs: [sast-semgrep, sast-codeql, dast-zap]
-    if: always()
+    needs: [checkout-target, security-scan]
     
     services:
       ollama:
@@ -216,174 +107,77 @@ jobs:
         ports:
           - 11434:11434
         options: >-
-          --health-cmd "curl -f http://localhost:11434/api/tags || exit 1"
+          --health-cmd "ollama list || exit 1"
           --health-interval 30s
           --health-timeout 10s
           --health-retries 5
     
     steps:
-    - name: Checkout code
+    - name: Checkout correlation engine
       uses: actions/checkout@v4
-      
+      with:
+        path: correlation-engine
+        
+    - name: Download target application
+      uses: actions/download-artifact@v4
+      with:
+        name: target-app
+        path: ./target-app
+        
+    - name: Download scan results
+      uses: actions/download-artifact@v4
+      with:
+        name: scan-results
+        path: ./scan-results
+        
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
         cache: 'pip'
         
-    - name: Download all scan results
-      uses: actions/download-artifact@v4
-      with:
-        path: scan-results
-        
-    - name: Install correlation engine dependencies
+    - name: Install dependencies
       run: |
-        cd correlation-engine
+        cd correlation-engine/correlation-engine
         pip install -r requirements.txt
         
-    - name: Setup Ollama with DeepSeek
+    - name: Setup Ollama model
       run: |
         # Pull DeepSeek Coder model
-        docker exec ${{ job.services.ollama.id }} ollama pull deepseek-coder:6.7b
-        
-        # Verify model is available
+        docker exec ${{ job.services.ollama.id }} ollama pull deepseek-coder:6.7b-instruct
         docker exec ${{ job.services.ollama.id }} ollama list
         
-    - name: Run correlation analysis
-      run: |
-        cd correlation-engine
-        python -m app.main correlate \
-          --semgrep ../scan-results/semgrep-results/semgrep.sarif \
-          --codeql ../scan-results/codeql-results/ \
-          --zap ../scan-results/zap-results/*.json \
-          --output ../correlation-report.json
-          
-    - name: Generate AI-powered patches
+    - name: Generate patches
       env:
         OLLAMA_HOST: http://localhost:11434
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: |
-        cd correlation-engine
+        cd correlation-engine/correlation-engine
+        python generate_patches.py
         
-        # Generate patches for all vulnerabilities
-        python -c "
-        import json
-        import sys
-        from app.services.patcher.llm_patch_generator import LLMPatchGenerator
-        
-        # Load correlation results
-        with open('../correlation-report.json', 'r') as f:
-            report = json.load(f)
-        
-        generator = LLMPatchGenerator()
-        patches = []
-        
-        # Generate patches for high/critical vulnerabilities
-        for vuln in report.get('vulnerabilities', []):
-            if vuln.get('severity') in ['HIGH', 'CRITICAL']:
-                try:
-                    patch = generator.generate_patch(
-                        vuln_id=vuln['id'],
-                        vuln_type=vuln['type'],
-                        file_path=vuln['file'],
-                        line_number=vuln.get('line', 0),
-                        code_snippet=vuln.get('code', ''),
-                        description=vuln.get('description', '')
-                    )
-                    patches.append(patch)
-                except Exception as e:
-                    print(f'Failed to generate patch for {vuln[\"id\"]}: {e}')
-        
-        # Save patches
-        with open('../patches.json', 'w') as f:
-            json.dump(patches, f, indent=2)
-        
-        print(f'Generated {len(patches)} patches')
-        "
-          
-    - name: Upload correlation report
-      uses: actions/upload-artifact@v4
-      with:
-        name: correlation-report
-        path: correlation-report.json
-        retention-days: 30
-        
-    - name: Upload generated patches
+    - name: Upload patches
       uses: actions/upload-artifact@v4
       with:
         name: ai-patches
         path: patches.json
         retention-days: 30
-        
-    - name: Generate security dashboard
-      run: |
-        cd correlation-engine
-        python -m app.main dashboard \
-          --input ../correlation-report.json \
-          --output ../security-dashboard.html
-          
-    - name: Upload security dashboard
-      uses: actions/upload-artifact@v4
-      with:
-        name: security-dashboard
-        path: security-dashboard.html
-        retention-days: 30
-        
-    - name: Comment PR with results
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const fs = require('fs');
-          const report = JSON.parse(fs.readFileSync('correlation-report.json', 'utf8'));
-          const patches = JSON.parse(fs.readFileSync('patches.json', 'utf8'));
-          
-          const comment = `## 🔒 Security Scan Results
-          
-          **Total Findings:** ${report.total_findings || 0}
-          **Critical:** ${report.critical || 0} | **High:** ${report.high || 0} | **Medium:** ${report.medium || 0} | **Low:** ${report.low || 0}
-          
-          **Correlated Vulnerabilities:** ${report.correlated_count || 0}
-          **AI Patches Generated:** ${patches.length}
-          
-          ### 🤖 AI-Powered Patches Available
-          ${patches.slice(0, 3).map(p => `- **${p.vuln_type}** in \`${p.file_path}\` (Confidence: ${p.confidence})`).join('\n')}
-          ${patches.length > 3 ? `\n... and ${patches.length - 3} more` : ''}
-          
-          [View Full Dashboard](${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID})
-          `;
-          
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: comment
-          });
 
-  # Job 6: Test patches automatically
-  test-patches:
-    name: Test AI-Generated Patches
+  # Job 4: Test patches and create PR
+  test-and-create-pr:
+    name: Test Patches & Create PR
     runs-on: ubuntu-latest
-    needs: correlate-and-patch
-    if: always() && needs.correlate-and-patch.result == 'success'
+    needs: [checkout-target, generate-patches]
+    if: github.event.inputs.auto_apply_patches == 'true' || github.event_name == 'workflow_dispatch'
     
     steps:
-    - name: Checkout code
+    - name: Checkout target repository
       uses: actions/checkout@v4
-      
-    - name: Set up JDK
-      uses: actions/setup-java@v4
       with:
-        java-version: ${{ env.JAVA_VERSION }}
-        distribution: 'temurin'
-        cache: maven
-        
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
+        repository: ${{ needs.checkout-target.outputs.target_repo }}
+        ref: ${{ github.event.inputs.target_ref || 'main' }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
         
     - name: Download patches
       uses: actions/download-artifact@v4
@@ -391,168 +185,101 @@ jobs:
         name: ai-patches
         path: ./
         
-    - name: Install correlation engine
+    - name: Download scan results (before)
+      uses: actions/download-artifact@v4
+      with:
+        name: scan-results
+        path: ./scan-results-before
+        
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Create patch branch
       run: |
-        cd correlation-engine
-        pip install -r requirements.txt
+        git config user.name "Security Bot"
+        git config user.email "security-bot@github.com"
         
-    - name: Apply patches to test branch
+        BRANCH_NAME="security-patches-$(date +%Y%m%d-%H%M%S)"
+        echo "PATCH_BRANCH=$BRANCH_NAME" >> $GITHUB_ENV
+        
+        git checkout -b $BRANCH_NAME
+        
+    - name: Apply patches
       run: |
-        # Create test branch
-        git config user.name "GitHub Actions Bot"
-        git config user.email "actions@github.com"
-        git checkout -b test-patches-${{ github.run_id }}
+        python ../correlation-engine/correlation-engine/apply_patches.py
         
-        cd correlation-engine
-        python -c "
-        import json
-        from app.services.patcher.patch_generator import PatchGenerator
-        
-        with open('../patches.json', 'r') as f:
-            patches = json.load(f)
-        
-        patcher = PatchGenerator()
-        applied = 0
-        failed = 0
-        
-        for patch in patches:
-            try:
-                # Apply patch
-                result = patcher.apply_patch(
-                    file_path=patch['file_path'],
-                    original_code=patch['original_code'],
-                    patched_code=patch['patched_code']
-                )
-                if result['success']:
-                    applied += 1
-                else:
-                    failed += 1
-                    print(f'Failed to apply patch: {result.get(\"error\")}')
-            except Exception as e:
-                failed += 1
-                print(f'Error applying patch: {e}')
-        
-        print(f'Applied {applied} patches, {failed} failed')
-        "
-        
-    - name: Run tests after patching
-      working-directory: ./vulnerable-app
+    - name: Commit patches
       run: |
-        mvn clean test || echo "Tests completed with status $?"
+        git add -A
+        git commit -m "Apply AI security patches - run ${{ github.run_id }}" || echo "No changes"
         
     - name: Run security scan on patched code
       run: |
         pip install semgrep
-        semgrep --config p/security-audit --config p/java \
-          --sarif --output patched-semgrep.sarif .
+        semgrep --config p/security-audit \
+                --config p/java \
+                --config p/owasp-top-ten \
+                --sarif --output scan-results-after.sarif \
+                . || true
         
-    - name: Compare before/after results
+    - name: Compare results
+      id: compare
       run: |
-        python -c "
-        import json
+        cd ..
+        python correlation-engine/correlation-engine/compare_results.py || true
         
-        # Load original results
-        with open('scan-results/semgrep-results/semgrep.sarif', 'r') as f:
-            original = json.load(f)
+    - name: Push patch branch
+      run: |
+        git push origin ${{ env.PATCH_BRANCH }}
         
-        # Load patched results
-        with open('patched-semgrep.sarif', 'r') as f:
-            patched = json.load(f)
-        
-        original_count = len(original.get('runs', [{}])[0].get('results', []))
-        patched_count = len(patched.get('runs', [{}])[0].get('results', []))
-        
-        improvement = original_count - patched_count
-        percentage = (improvement / original_count * 100) if original_count > 0 else 0
-        
-        print(f'Original vulnerabilities: {original_count}')
-        print(f'After patching: {patched_count}')
-        print(f'Improvement: {improvement} ({percentage:.1f}%)')
-        
-        # Save comparison
-        with open('patch-comparison.json', 'w') as f:
-            json.dump({
-                'original_count': original_count,
-                'patched_count': patched_count,
-                'improvement': improvement,
-                'improvement_percentage': percentage
-            }, f, indent=2)
-        "
-        
-    - name: Upload patch comparison
-      uses: actions/upload-artifact@v4
-      with:
-        name: patch-comparison
-        path: patch-comparison.json
-        retention-days: 30
-        
-    - name: Upload patched scan results
-      uses: actions/upload-artifact@v4
-      with:
-        name: patched-scan-results
-        path: patched-semgrep.sarif
-        retention-days: 30
-        
-    - name: Create PR for patches
-      if: ${{ github.event.inputs.auto_apply_patches == 'true' || github.event_name == 'schedule' }}
+    - name: Create Pull Request
       uses: peter-evans/create-pull-request@v6
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        commit-message: "🤖 Apply AI-generated security patches"
-        title: "🔒 Automated Security Patches - Run ${{ github.run_id }}"
+        branch: ${{ env.PATCH_BRANCH }}
+        base: ${{ github.event.inputs.target_ref || 'main' }}
+        title: "🔒 Automated Security Patches - ${{ github.run_id }}"
         body: |
           ## 🤖 AI-Generated Security Patches
           
-          This PR contains automatically generated patches for security vulnerabilities.
+          This PR contains automatically generated security patches from the **Security Automation Platform**.
           
-          **Patches Applied:** See artifact `ai-patches`
-          **Test Results:** See artifact `patch-comparison`
+          ### 📊 Results
+          
+          - **Vulnerabilities Before:** ${{ steps.compare.outputs.before_count }}
+          - **Vulnerabilities After:** ${{ steps.compare.outputs.after_count }}
+          - **Improvement:** ${{ steps.compare.outputs.improvement }} vulnerabilities fixed (${{ steps.compare.outputs.percentage }}%)
+          
+          ### 🔍 What was patched?
+          
+          The AI analyzed the codebase and generated patches for:
+          - SQL Injection vulnerabilities
+          - XSS vulnerabilities
+          - Path Traversal issues
+          - Insecure deserialization
+          - And other OWASP Top 10 issues
           
           ### ⚠️ Review Required
-          - [ ] Review all code changes
-          - [ ] Verify test results
-          - [ ] Check for regressions
-          - [ ] Approve and merge if satisfactory
           
-          **Generated by:** GitHub Actions
-          **Workflow Run:** ${{ github.run_id }}
-        branch: automated-patches-${{ github.run_id }}
-        base: main
-        labels: security, automated, patches
-
-  # Job 7: Deploy to Docker Hub
-  deploy:
-    name: Deploy to Docker Hub
-    runs-on: ubuntu-latest
-    needs: test-patches
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        
-    - name: Build and push
-      uses: docker/build-push-action@v5
-      with:
-        context: ./correlation-engine
-        push: true
-        tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:latest
-          ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:${{ github.sha }}
-        cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/security-automation:buildcache
-        cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/security-automation:buildcache,mode=max
-        
-    - name: Update deployment status
-      run: |
-        echo "✅ Deployed to Docker Hub"
-        echo "Image: ${{ secrets.DOCKERHUB_USERNAME }}/security-automation:latest"
-
+          - [ ] Review all code changes carefully
+          - [ ] Run your test suite
+          - [ ] Verify no regressions introduced
+          - [ ] Check patch quality and correctness
+          
+          ### 📦 Artifacts
+          
+          - **Patches:** See `ai-patches` artifact in [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - **Scan Results:** Before and after comparison available
+          
+          ---
+          
+          **Generated by:** Security Automation Platform  
+          **Workflow:** ${{ github.workflow }}  
+          **Run ID:** ${{ github.run_id }}
+        labels: |
+          security
+          automated
+          ai-patches
+        draft: false

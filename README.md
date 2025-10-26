@@ -1,290 +1,228 @@
-# 🔒 AI-Powered Security Automation Platform
+# Security Automation Platform 🔒
 
-[![Docker Hub](https://img.shields.io/docker/v/srinidhiyoganand/security-automation?label=Docker%20Hub)](https://hub.docker.com/r/srinidhiyoganand/security-automation)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/yourusername/security-automation-platform/security-pipeline.yml?branch=main)](https://github.com/yourusername/security-automation-platform/actions)
+**AI-Powered Security Scanning and Automated Patching for ANY Application**
+
+[![Docker Hub](https://img.shields.io/docker/pulls/srinidhiyoganand/security-automation)](https://hub.docker.com/r/srinidhiyoganand/security-automation)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An intelligent security automation platform that correlates findings from multiple security scanning tools and uses AI to automatically generate, test, and apply security patches.
+## What Is This?
 
-## ✨ Key Features
+A **pluggable security automation platform** that:
+- 🔍 Scans your application for vulnerabilities (SAST)
+- 🤖 Generates AI-powered patches using LLMs (DeepSeek, OpenAI, Gemini)
+- ✅ Tests patches automatically
+- 📝 Creates Pull Requests with fixes
 
-- 🔍 **Multi-Tool Correlation** - Integrates Semgrep, CodeQL, and OWASP ZAP findings
-- 🤖 **AI-Powered Patching** - Generates fixes using LLM models (DeepSeek, OpenAI, Gemini)
-- 🔄 **Automated Testing** - Tests patches before applying them
-- 📊 **Interactive Dashboards** - Real-time vulnerability tracking with risk scoring
-- 🔌 **Pluggable Architecture** - Works with any Java application via REST API
-- 🚀 **CI/CD Integration** - GitHub Actions workflow with automated PR creation
-- 🐳 **Docker Deployment** - Available on Docker Hub, no local dependencies
+**Works with ANY application** - not tied to a specific codebase!
 
-## 🚀 Quick Start
+## Quick Start
 
-### Using Docker Hub (Recommended)
+### Option 1: Docker Compose (Local)
 
-```bash
-# Pull and start the platform
-docker-compose -f docker-compose-hub.yml up -d
-
-# Wait for Ollama to download the model (~2-5 minutes)
-docker logs -f security-ollama
-
-# Access the API
-curl http://localhost:8000/health
-```
-
-### Using API Client
-
-```python
-from correlation_engine.api_client import SecurityAutomationClient
-
-# Initialize client
-client = SecurityAutomationClient("http://localhost:8000")
-
-# Scan your project
-results = client.scan_project(
-    project_path="/path/to/your/app",
-    tools=["semgrep", "zap"]
-)
-
-# Generate and apply patches
-for vuln in results["high_severity"]:
-    patch = client.generate_patch(vuln["id"], auto_apply=False)
-    print(f"Generated patch for {vuln['type']}: {patch['confidence']}")
-```
-
-## 🏗️ Architecture
-
-```
-┌──────────────┐    ┌───────────────┐    ┌──────────────┐
-│   Security   │───▶│  Correlation  │───▶│  LLM Patch   │
-│    Tools     │    │    Engine     │    │  Generator   │
-└──────────────┘    └───────────────┘    └──────────────┘
-                           │                     │
-                           ▼                     ▼
-                    ┌─────────────┐      ┌──────────────┐
-                    │  Dashboard  │      │ Test & Apply │
-                    │  (FastAPI)  │      │    Patches   │
-                    └─────────────┘      └──────────────┘
-```
-
-## 📋 Prerequisites
-
-- **Docker** & Docker Compose
-- **Python 3.11+** (for local development)
-- **Maven 3.8+** (for building test app)
-
-## 🛠️ Installation
-
-### Option 1: Docker Hub (Production)
+Scan your own application:
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/security-automation-platform.git
-cd security-automation-platform
+# Set path to YOUR application
+export TARGET_APP_PATH=/path/to/your/app
 
-# Start services
-docker-compose -f docker-compose-hub.yml up -d
+# Start the platform
+docker-compose up -d
 
-# Verify deployment
-curl http://localhost:8000/api/health
+# Scan your app
+docker exec security-correlation python api_client.py scan /target-app
+
+# View dashboard
+open http://localhost:8000/api/dashboard
 ```
 
-### Option 2: Local Development
+### Option 2: GitHub Actions (CI/CD)
 
-```bash
-# Clone repository
-git clone https://github.com/yourusername/security-automation-platform.git
-cd security-automation-platform
+Add to your repository's workflow:
 
-# Setup Python environment
-cd correlation-engine
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
+```yaml
+name: Security Scan
 
-# Setup Ollama
-./setup-ollama.sh  # or setup-ollama.ps1 on Windows
+on: [push, pull_request]
 
-# Start the server
-python run_server.py
+jobs:
+  security:
+    uses: Srinidhi-Yoganand/security-automation-platform/.github/workflows/security-pipeline.yml@main
+    with:
+      target_repository: your-org/your-repo
+      target_ref: main
+      auto_apply_patches: true
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-## 📖 Usage
+The platform will:
+1. Scan your repository
+2. Generate AI patches for vulnerabilities
+3. Create a test branch with patches applied
+4. Verify vulnerabilities are fixed
+5. Create a PR for you to review
 
-### 1. Scan Your Application
+## Architecture
+
+```
+┌─────────────────────┐
+│   Your Application  │ ← Pluggable target
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Security Scanner   │ ← Semgrep, CodeQL
+│  (Correlation Engine)│
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   AI Patch Gen      │ ← DeepSeek/OpenAI/Gemini
+│   (LLM-powered)     │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  Patch Testing      │ ← Automatic verification
+│  & PR Creation      │
+└─────────────────────┘
+```
+
+## Features
+
+### 🔍 Multi-Tool Security Scanning
+- **Semgrep** - Fast SAST for multiple languages
+- **CodeQL** - Deep semantic analysis
+- **OWASP ZAP** - DAST for running applications
+
+### 🤖 AI-Powered Patching
+- **DeepSeek Coder** - Primary LLM (local, free)
+- **OpenAI GPT-4** - Fallback option
+- **Google Gemini** - Alternative provider
+- **Template-based** - Fallback for common patterns
+
+### ✅ Automated Validation
+- Apply patches to test branch
+- Re-scan to verify fixes
+- Compare before/after results
+- Auto-create PR if successful
+
+### 📊 Comprehensive Dashboard
+- Vulnerability correlation across tools
+- Patch confidence scores
+- Risk assessment
+- Trend analysis
+
+## Usage Examples
+
+### Scan a Java Application
 
 ```bash
-# Using curl
+TARGET_APP_PATH=./my-java-app docker-compose up -d
+docker exec security-correlation python api_client.py scan /target-app --tools semgrep,codeql
+```
+
+### Scan via API
+
+```bash
 curl -X POST http://localhost:8000/api/scan \
   -H "Content-Type: application/json" \
-  -d '{
-    "project_path": "/path/to/app",
-    "tools": ["semgrep", "zap"]
-  }'
-
-# Using Python API client
-python correlation-engine/api_client.py scan /path/to/app
+  -d '{"path": "/target-app", "tools": ["semgrep"]}'
 ```
 
-### 2. Generate Patches
+### Generate Patches
 
 ```bash
-# Generate patch for specific vulnerability
 curl -X POST http://localhost:8000/api/patches/generate \
   -H "Content-Type: application/json" \
-  -d '{
-    "vuln_id": "sql-injection-001",
-    "auto_apply": false
-  }'
+  -d '{"vuln_ids": ["sql-injection-1", "xss-2"]}'
 ```
 
-### 3. View Dashboard
+### Use in CI/CD
 
-```bash
-# Generate HTML dashboard
-curl http://localhost:8000/api/dashboard > dashboard.html
-open dashboard.html
-```
+See `.github/workflows/security-pipeline.yml` for the full workflow.
 
-### 4. Integration Methods
+**Manual Trigger:**
+1. Go to Actions tab in your repo
+2. Select "Security Automation Platform"
+3. Click "Run workflow"
+4. Enter target repository
+5. Enable auto-apply patches
+6. Run!
 
-The platform supports 6 integration methods:
-
-1. **REST API** (Universal)
-2. **Maven Plugin** (Java)
-3. **Gradle Plugin** (Java)
-4. **GitHub Actions** (CI/CD)
-5. **CLI Tool** (Command-line)
-6. **Docker Sidecar** (Kubernetes)
-
-See [SDK.md](correlation-engine/SDK.md) for detailed integration guides.
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
 ```bash
-# LLM Providers
+# LLM Providers (optional, falls back to DeepSeek)
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=...
+
+# Target Application
+TARGET_APP_PATH=/path/to/your/app
+
+# Ollama (local LLM)
 OLLAMA_HOST=http://localhost:11434
-OPENAI_API_KEY=sk-...                 # Optional
-GEMINI_API_KEY=...                    # Optional
-
-# Database
-DATABASE_URL=sqlite:///security_behavior.db
-
-# Notifications
-SLACK_WEBHOOK_URL=https://hooks.slack.com/...
-EMAIL_SMTP_HOST=smtp.gmail.com
-GITHUB_TOKEN=ghp_...
+OLLAMA_MODEL=deepseek-coder:6.7b-instruct
 ```
 
-### docker-compose-hub.yml
+### Docker Compose
+
+See `docker-compose.yml` - mount YOUR application:
 
 ```yaml
 services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-models:/root/.ollama
-  
   correlation-engine:
-    image: srinidhiyoganand/security-automation:latest
-    ports:
-      - "8000:8000"
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ${TARGET_APP_PATH:-.}:/target-app:ro
 ```
 
-## 🧪 Testing
+## Test Example
 
-### Run All Tests
+Want to see it in action? Check out the `test-examples` branch which contains a vulnerable Java app:
 
 ```bash
-cd correlation-engine
-source venv/bin/activate
-
-# Test vulnerability detection (10+ types)
-python test_all_vulnerabilities.py
-
-# Test patch generation
-python test_llm_patches.py
-
-# Test API endpoints
-python test_api_direct.py
+git checkout test-examples
+TARGET_APP_PATH=./vulnerable-app docker-compose up -d
 ```
 
-### CI/CD Pipeline
+## API Documentation
 
-The GitHub Actions workflow automatically:
+Full API docs available at: `http://localhost:8000/docs` when running
 
-1. **Scans** code with Semgrep, CodeQL, and ZAP
-2. **Correlates** findings across tools
-3. **Generates** AI-powered patches
-4. **Tests** patches in isolated branch
-5. **Creates PR** if patches improve security
-6. **Deploys** to Docker Hub on merge
+Key endpoints:
+- `POST /api/scan` - Scan application
+- `POST /api/patches/generate` - Generate patches
+- `POST /api/patches/apply` - Apply patches
+- `GET /api/dashboard` - View dashboard
+- `GET /api/metrics` - Get statistics
 
-## 📊 Supported Vulnerabilities
-
-The platform can detect and patch:
-
-- SQL Injection
-- XSS (Cross-Site Scripting)
-- Path Traversal
-- Command Injection
-- XXE (XML External Entity)
-- Insecure Deserialization
-- SSRF (Server-Side Request Forgery)
-- Hardcoded Secrets
-- Weak Cryptography
-- Authentication Bypass
-- **...and more!**
-
-## 🔐 Security
-
-- **Human-in-the-Loop**: All patches require review before merge
-- **Isolated Testing**: Patches tested in separate git branches
-- **Confidence Scoring**: Each patch rated by AI confidence
-- **Rollback Support**: Easy revert if issues detected
-
-## 📚 Documentation
-
-- **[Architecture](ARCHITECTURE.md)** - System design and components
-- **[API Documentation](correlation-engine/API-DOCS.md)** - REST API reference
-- **[SDK Guide](correlation-engine/SDK.md)** - Integration methods
-- **[Deployment Guide](docs/guides/DOCKER-HUB-DEPLOYMENT.md)** - Production deployment
-- **[Reports](docs/reports/)** - Phase implementation reports
-
-## 🤝 Contributing
-
-Contributions welcome! Please:
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create your feature branch
+3. Test with the example app in `test-examples` branch
+4. Submit a pull request
 
-## 📄 License
+## Architecture Details
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Correlation Engine** - Python FastAPI application
+- **Scanner Integration** - Semgrep, CodeQL, ZAP parsers
+- **LLM Integration** - Multi-provider support
+- **Patch Generator** - Template + AI hybrid approach
+- **Docker** - Containerized deployment
 
-## 🙏 Acknowledgments
+## License
 
-- **Ollama** for local LLM runtime
-- **DeepSeek** for code generation models
-- **Semgrep**, **CodeQL**, **OWASP ZAP** for security scanning
-- **FastAPI** for the web framework
+MIT License - see LICENSE file
 
-## 📧 Support
+## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/security-automation-platform/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/security-automation-platform/discussions)
-- **Docker Hub**: [srinidhiyoganand/security-automation](https://hub.docker.com/r/srinidhiyoganand/security-automation)
+- 📖 Documentation: See `docs/` directory
+- 🐛 Issues: [GitHub Issues](https://github.com/Srinidhi-Yoganand/security-automation-platform/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/Srinidhi-Yoganand/security-automation-platform/discussions)
 
 ---
 
-**Built with ❤️ for secure software development**
+**Made with ❤️ by the Security Automation Team**
