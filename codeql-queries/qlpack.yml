@@ -1,0 +1,4 @@
+name: security-automation/java-queries
+version: 1.0.0
+libraryPathDependencies:
+  - codeql/java-all

@@ -32,6 +32,10 @@ ollama==0.6.0
 javalang==0.13.0
 diff-match-patch==20230430
 
+# Thesis enhancement: Semantic analysis & Symbolic execution
+z3-solver==4.12.2.0  # Constraint solver for symbolic execution
+py4j==0.10.9.7       # For JOERN integration (optional)
+
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1

@@ -51,6 +51,19 @@ test-data/*.json
 !test-data/semgrep-results.sarif
 !test-data/zap-results.json
 
+# CodeQL databases and results
+codeql-databases/
+*.sarif
+.cache/
+codeql-results/
+
+# Java compiled
+*.class
+*.jar
+!vulnerable-app/target/*.jar
+*.war
+*.ear
+
 # Temporary files
 *.tmp
 *.temp

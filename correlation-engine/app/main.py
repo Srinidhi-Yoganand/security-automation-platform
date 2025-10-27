@@ -13,6 +13,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Import semantic analysis router
+from app.api.semantic_routes import router as semantic_router
+
 # Application metadata
 __version__ = "0.1.0"
 __title__ = "Security Correlation Engine"
@@ -32,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(semantic_router)
 
 
 # Models
@@ -353,7 +359,6 @@ async def generate_patch_for_vulnerability(
             confidence=vuln.confidence,
             description=vuln.description,
             cwe_id=vuln.cwe_id,
-            tool_name=vuln.tool
             tool_name=vuln.tool
         )
         
