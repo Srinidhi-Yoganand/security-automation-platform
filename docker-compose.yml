@@ -60,6 +60,20 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-}
       
+      # DAST Configuration
+      - ZAP_HOST=http://zap:8090
+      
+      # SAST Configuration  
+      - SONARQUBE_HOST=http://sonarqube:9000
+      - SONARQUBE_TOKEN=${SONARQUBE_TOKEN:-squ_default_token}
+      
+      # IAST Configuration
+      - IAST_PROVIDER=${IAST_PROVIDER:-custom}
+      - IAST_AGENT_HOST=${IAST_AGENT_HOST:-http://localhost:8888}
+      - CONTRAST_API_KEY=${CONTRAST_API_KEY:-}
+      - CONTRAST_API_SERVICE_KEY=${CONTRAST_API_SERVICE_KEY:-}
+      - CONTRAST_API_URL=${CONTRAST_API_URL:-https://app.contrastsecurity.com/api}
+      
       # Notifications (optional)
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
@@ -71,6 +85,10 @@ services:
     
     depends_on:
       ollama:
+        condition: service_healthy
+      zap:
+        condition: service_healthy
+      sonarqube:
         condition: service_healthy
     
     ports:
@@ -98,6 +116,51 @@ services:
     networks:
       - security-network
 
+  # OWASP ZAP - Dynamic Application Security Testing (DAST)
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: security-zap
+    ports:
+      - "8090:8090"
+    command: zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.disablekey=true
+    restart: unless-stopped
+    networks:
+      - security-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # SonarQube - Code Quality and Security Analysis
+  sonarqube:
+    image: sonarqube:10-community
+    container_name: security-sonarqube
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    restart: unless-stopped
+    networks:
+      - security-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
 volumes:
   ollama_data:
     name: security-ollama-models
@@ -109,6 +172,18 @@ volumes:
   
   codeql_data:
     name: security-codeql-cache
+    driver: local
+  
+  sonarqube_data:
+    name: security-sonarqube-data
+    driver: local
+  
+  sonarqube_extensions:
+    name: security-sonarqube-extensions
+    driver: local
+  
+  sonarqube_logs:
+    name: security-sonarqube-logs
     driver: local
 
 networks:

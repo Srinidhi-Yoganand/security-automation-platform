@@ -25,6 +25,9 @@ requests==2.31.0
 sarif-om==1.0.4
 defusedxml==0.7.1
 
+# DAST (Dynamic Application Security Testing)
+python-owasp-zap-v2.4==0.0.21  # ZAP Python API client
+
 # LLM integration (for Phase 3)
 openai==1.51.0
 langchain==0.0.340
