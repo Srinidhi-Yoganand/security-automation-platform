@@ -1,4 +1,0 @@
-"Query","Name","Severity","Message","Path","Start Line","Start Column","End Line","End Column"
-"java/sql-injection","SQL Injection","error","This query depends on a user-provided value.","vulnerable-app/src/main/java/com/security/automation/controller/UserController.java",35,9,35,70
-"java/idor","Insecure Direct Object Reference","warning","Authorization check does not validate user identity match.","vulnerable-app/src/main/java/com/security/automation/security/AuthorizationService.java",20,5,23,6
-"java/idor","Insecure Direct Object Reference","warning","Authorization check missing company context validation.","vulnerable-app/src/main/java/com/security/automation/controller/OrderController.java",36,5,40,6
