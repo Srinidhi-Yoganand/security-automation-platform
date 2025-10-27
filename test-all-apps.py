@@ -192,7 +192,7 @@ class MultiAppTester:
         """Generate comprehensive test report"""
         report_path = self.results_dir / "MULTI-APP-TEST-REPORT.md"
         
-        with open(report_path, 'w') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write("# Multi-Application Test Report\n\n")
             f.write(f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
             f.write("---\n\n")
@@ -290,8 +290,8 @@ class MultiAppTester:
         
         # Also save JSON
         json_path = self.results_dir / "test-results.json"
-        with open(json_path, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(self.results, f, indent=2, ensure_ascii=False)
         print(f"📄 JSON results: {json_path}\n")
 
 def main():
