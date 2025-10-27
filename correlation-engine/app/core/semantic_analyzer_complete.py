@@ -552,18 +552,34 @@ class SemanticAnalyzer:
                 line_number=line_number
             )
     
-    def analyze_project(self, source_path: str, force_refresh: bool = False) -> Dict[str, Any]:
+    def analyze_project(
+        self, 
+        source_path: str, 
+        force_refresh: bool = False,
+        enable_symbolic_verification: bool = False
+    ) -> Dict[str, Any]:
         """
         Complete analysis of a Java project
         
         Args:
             source_path: Path to Java project
             force_refresh: Force re-analysis even if cached
+            enable_symbolic_verification: Use symbolic execution to verify findings
             
         Returns:
             Dictionary with analysis results
         """
         logger.info(f"Starting complete analysis of {source_path}")
+        
+        # Import symbolic executor if verification enabled
+        symbolic_executor = None
+        if enable_symbolic_verification:
+            try:
+                from .symbolic_executor import SymbolicExecutor
+                symbolic_executor = SymbolicExecutor()
+                logger.info("Symbolic verification enabled")
+            except ImportError as e:
+                logger.warning(f"Could not load symbolic executor: {e}")
         
         results = {
             'project_path': source_path,
@@ -600,6 +616,7 @@ class SemanticAnalyzer:
             data_flows = self.parse_sarif_results(sarif_file)
             
             # Step 4: Enhance with security context
+            verified_vulnerabilities = []
             for flow in data_flows:
                 # Extract security context for sink location
                 context = self.extract_security_context(
@@ -607,8 +624,31 @@ class SemanticAnalyzer:
                     flow.sink_location.start_line
                 )
                 
+                # Optional symbolic verification
+                is_verified = False
+                symbolic_proof = None
+                if symbolic_executor:
+                    logger.info(f"Verifying finding with symbolic execution: {flow.vulnerability_type}")
+                    try:
+                        symbolic_proof = symbolic_executor.verify_codeql_finding(flow, context)
+                        if symbolic_proof:
+                            is_verified = True
+                            logger.info(f"✓ Finding verified: {flow.vulnerability_type}")
+                        else:
+                            logger.info(f"✗ Finding rejected (false positive): {flow.vulnerability_type}")
+                            continue  # Skip unverified findings
+                    except Exception as e:
+                        logger.warning(f"Symbolic verification failed: {e}")
+                
                 vuln = flow.to_dict()
                 vuln['security_context'] = context.to_dict()
+                vuln['symbolically_verified'] = is_verified
+                
+                if symbolic_proof:
+                    vuln['exploit_proof'] = symbolic_proof.to_dict()
+                    vuln['confidence'] = symbolic_proof.confidence
+                
+                verified_vulnerabilities.append(vuln)
                 results['vulnerabilities'].append(vuln)
                 
                 # Update statistics

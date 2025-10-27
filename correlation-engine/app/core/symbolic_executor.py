@@ -10,9 +10,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Any, Tuple
 from enum import Enum
 import logging
-from z3 import *
-
-from .semantic_analyzer import DataFlowPath, SecurityContext
+from z3 import Solver, Int, Bool, IntSort, sat, unsat
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +90,91 @@ class SymbolicExecutor:
         """Initialize symbolic executor"""
         self.solver = Solver()
         self.symbolic_values: Dict[str, SymbolicValue] = {}
+    
+    def verify_codeql_finding(
+        self,
+        dataflow_path: Any,
+        security_context: Any
+    ) -> Optional[ExploitProof]:
+        """
+        Verify a CodeQL finding using symbolic execution
+        
+        This adapter method takes DataFlowPath and SecurityContext from
+        semantic_analyzer_complete and converts them for analysis.
+        
+        Args:
+            dataflow_path: DataFlowPath from semantic analyzer
+            security_context: Any from semantic analyzer
+            
+        Returns:
+            ExploitProof if vulnerability confirmed, None otherwise
+        """
+        # Create a compatible flow object for internal analysis
+        flow = self._adapt_dataflow(dataflow_path)
+        context = self._adapt_security_context(security_context)
+        
+        return self.analyze_authorization_gap(flow, context)
+    
+    def _adapt_dataflow(self, dataflow_path: Any) -> 'MockFlow':
+        """Adapt DataFlowPath from semantic analyzer"""
+        class MockFlow:
+            def __init__(self, df):
+                self.vulnerability_type = df.vulnerability_type or "idor"
+                self.source_location = (
+                    df.source_location.file_path if hasattr(df.source_location, 'file_path')
+                    else df.source_location[0] if isinstance(df.source_location, tuple)
+                    else "unknown",
+                    df.source_location.start_line if hasattr(df.source_location, 'start_line')
+                    else df.source_location[1] if isinstance(df.source_location, tuple) and len(df.source_location) > 1
+                    else 0
+                )
+                self.sink_location = (
+                    df.sink_location.file_path if hasattr(df.sink_location, 'file_path')
+                    else df.sink_location[0] if isinstance(df.sink_location, tuple)
+                    else "unknown",
+                    df.sink_location.start_line if hasattr(df.sink_location, 'start_line')
+                    else df.sink_location[1] if isinstance(df.sink_location, tuple) and len(df.sink_location) > 1
+                    else 0
+                )
+                self.intermediate_steps = []
+                if hasattr(df, 'path') and df.path:
+                    self.intermediate_steps = [{"code": step} for step in df.path]
+        
+        return MockFlow(dataflow_path)
+    
+    def _adapt_security_context(self, security_context: Any) -> 'MockContext':
+        """Adapt SecurityContext from semantic analyzer"""
+        class MockContext:
+            def __init__(self, sc):
+                self.security_annotations = (
+                    sc.security_annotations if hasattr(sc, 'security_annotations')
+                    else []
+                )
+                self.framework = (
+                    sc.framework if hasattr(sc, 'framework')
+                    else "spring"
+                )
+                self._has_auth = (
+                    sc.authentication_present if hasattr(sc, 'authentication_present')
+                    else False
+                )
+                self._has_authz = (
+                    sc.authorization_present if hasattr(sc, 'authorization_present')
+                    else False
+                )
+            
+            def has_authorization(self):
+                return self._has_authz
+            
+            def has_authentication(self):
+                return self._has_auth
+        
+        return MockContext(security_context)
         
     def analyze_authorization_gap(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> Optional[ExploitProof]:
         """
         Analyze if there's an exploitable authorization gap in the data flow
@@ -127,8 +205,8 @@ class SymbolicExecutor:
     
     def _analyze_idor(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> Optional[ExploitProof]:
         """
         Analyze Insecure Direct Object Reference vulnerabilities
@@ -225,8 +303,8 @@ class SymbolicExecutor:
     
     def _analyze_missing_auth(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> Optional[ExploitProof]:
         """
         Analyze missing authentication vulnerabilities
@@ -286,8 +364,8 @@ class SymbolicExecutor:
     
     def _check_for_authorization(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> bool:
         """
         Check if there's an authorization check in the data flow path
@@ -318,8 +396,8 @@ class SymbolicExecutor:
     
     def _check_for_authentication(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> bool:
         """
         Check if there's an authentication check in the path
@@ -343,7 +421,7 @@ class SymbolicExecutor:
         
         return False
     
-    def _extract_endpoint(self, flow: DataFlowPath) -> str:
+    def _extract_endpoint(self, flow: Any) -> str:
         """
         Extract the API endpoint from the data flow
         
@@ -360,8 +438,8 @@ class SymbolicExecutor:
     
     def find_missing_checks(
         self,
-        flow: DataFlowPath,
-        security_context: SecurityContext
+        flow: Any,
+        security_context: Any
     ) -> Dict[str, Any]:
         """
         Identify what security checks are missing in the code
@@ -413,7 +491,7 @@ class SymbolicExecutor:
         
         return missing
     
-    def _suggest_authorization_code(self, security_context: SecurityContext) -> str:
+    def _suggest_authorization_code(self, security_context: Any) -> str:
         """
         Suggest appropriate authorization code based on framework
         
