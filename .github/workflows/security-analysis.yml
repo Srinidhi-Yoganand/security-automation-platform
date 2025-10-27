@@ -1,0 +1,248 @@
+name: Security Analysis with Automated Patching
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      target_path:
+        description: 'Path to analyze (relative to repository root)'
+        required: false
+        default: '.'
+      language:
+        description: 'Programming language'
+        required: false
+        default: 'java'
+        type: choice
+        options:
+          - java
+          - python
+          - javascript
+          - go
+      generate_patches:
+        description: 'Generate security patches'
+        required: false
+        default: true
+        type: boolean
+      llm_provider:
+        description: 'LLM provider for patch generation'
+        required: false
+        default: 'template'
+        type: choice
+        options:
+          - template
+          - gemini
+          - openai
+          - ollama
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+  issues: write
+
+jobs:
+  security-analysis:
+    name: Security Analysis & Automated Patching
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better analysis
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Security Analysis Platform
+        run: |
+          docker build -t security-automation-platform:latest .
+      
+      - name: Run End-to-End Security Analysis
+        id: security-scan
+        run: |
+          # Start the security platform
+          docker run -d \
+            --name security-platform \
+            -v $(pwd):/target-app:ro \
+            -v security-data:/data \
+            -e GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e LLM_PROVIDER="${{ github.event.inputs.llm_provider || 'template' }}" \
+            -p 8000:8000 \
+            security-automation-platform:latest
+          
+          # Wait for platform to be ready
+          echo "⏳ Waiting for platform to start..."
+          timeout 60 bash -c 'until curl -s http://localhost:8000/api/v1/status > /dev/null; do sleep 2; done'
+          echo "✅ Platform ready!"
+          
+          # Run end-to-end analysis
+          echo "🔍 Running security analysis..."
+          
+          TARGET_PATH="${{ github.event.inputs.target_path || '.' }}"
+          LANGUAGE="${{ github.event.inputs.language || 'java' }}"
+          GENERATE_PATCHES="${{ github.event.inputs.generate_patches || 'true' }}"
+          
+          curl -X POST http://localhost:8000/api/v1/e2e/analyze-and-fix \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"source_path\": \"/target-app/${TARGET_PATH}\",
+              \"language\": \"${LANGUAGE}\",
+              \"create_database\": true,
+              \"generate_patches\": ${GENERATE_PATCHES},
+              \"validate_patches\": true,
+              \"llm_provider\": \"${{ github.event.inputs.llm_provider || 'template' }}\"
+            }" \
+            -o analysis-results.json
+          
+          echo "✅ Analysis complete!"
+          
+          # Extract results
+          docker cp security-platform:/data/results ./security-results || true
+          docker cp security-platform:/data/patches ./security-patches || true
+          
+          # Stop container
+          docker stop security-platform
+      
+      - name: Parse Results
+        id: parse-results
+        run: |
+          if [ -f analysis-results.json ]; then
+            VULN_FOUND=$(jq -r '.vulnerabilities_found // 0' analysis-results.json)
+            VULN_FIXED=$(jq -r '.vulnerabilities_fixed // 0' analysis-results.json)
+            
+            echo "vulnerabilities_found=${VULN_FOUND}" >> $GITHUB_OUTPUT
+            echo "vulnerabilities_fixed=${VULN_FIXED}" >> $GITHUB_OUTPUT
+            
+            echo "📊 Analysis Summary:"
+            echo "  Vulnerabilities Found: ${VULN_FOUND}"
+            echo "  Vulnerabilities Fixed: ${VULN_FIXED}"
+          else
+            echo "⚠️ No analysis results found"
+            echo "vulnerabilities_found=0" >> $GITHUB_OUTPUT
+            echo "vulnerabilities_fixed=0" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Upload SARIF Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-results/
+          category: security-automation-platform
+        continue-on-error: true
+      
+      - name: Generate Security Report
+        if: always()
+        run: |
+          cat > security-report.md << 'EOF'
+          # 🔒 Security Analysis Report
+          
+          ## Summary
+          - **Vulnerabilities Found:** ${{ steps.parse-results.outputs.vulnerabilities_found }}
+          - **Vulnerabilities Fixed:** ${{ steps.parse-results.outputs.vulnerabilities_fixed }}
+          - **LLM Provider:** ${{ github.event.inputs.llm_provider || 'template' }}
+          - **Commit:** ${{ github.sha }}
+          
+          ## Details
+          
+          This analysis used a hybrid approach combining:
+          1. 🔍 **CodeQL Semantic Analysis** - Deep code understanding with data flow tracking
+          2. 🧮 **Z3 Symbolic Execution** - Formal verification of exploitability
+          3. 🤖 **LLM-Powered Patching** - AI-generated security fixes
+          4. ✅ **Automated Validation** - Multi-level patch verification
+          
+          ## Results
+          
+          EOF
+          
+          if [ -f analysis-results.json ]; then
+            echo '```json' >> security-report.md
+            jq '.' analysis-results.json >> security-report.md
+            echo '```' >> security-report.md
+          else
+            echo "No detailed results available." >> security-report.md
+          fi
+          
+          echo "" >> security-report.md
+          echo "---" >> security-report.md
+          echo "*Generated by [Security Automation Platform](https://github.com/${{ github.repository }})*" >> security-report.md
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('security-report.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });
+      
+      - name: Create Issue for Critical Vulnerabilities
+        if: steps.parse-results.outputs.vulnerabilities_found > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const vulnCount = ${{ steps.parse-results.outputs.vulnerabilities_found }};
+            const fixedCount = ${{ steps.parse-results.outputs.vulnerabilities_fixed }};
+            
+            if (vulnCount > fixedCount) {
+              const unfixed = vulnCount - fixedCount;
+              
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🚨 ${unfixed} Security Vulnerabilities Require Attention`,
+                body: `## Security Analysis Alert
+                
+                The automated security analysis found **${vulnCount} vulnerabilities**, but only **${fixedCount}** could be automatically fixed.
+                
+                **${unfixed} vulnerabilities require manual review.**
+                
+                ### Next Steps
+                1. Review the full analysis report in the workflow run
+                2. Check generated patches in the artifacts
+                3. Apply validated patches
+                4. Manually fix remaining vulnerabilities
+                
+                **Commit:** ${context.sha}
+                **Workflow:** [View Details](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+                `,
+                labels: ['security', 'vulnerability', 'automated-analysis']
+              });
+            }
+      
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-analysis-results
+          path: |
+            analysis-results.json
+            security-report.md
+            security-results/
+            security-patches/
+          retention-days: 90
+      
+      - name: Fail on Critical Vulnerabilities
+        if: steps.parse-results.outputs.vulnerabilities_found > 0
+        run: |
+          VULN_FOUND=${{ steps.parse-results.outputs.vulnerabilities_found }}
+          VULN_FIXED=${{ steps.parse-results.outputs.vulnerabilities_fixed }}
+          
+          if [ "$VULN_FOUND" -gt "$VULN_FIXED" ]; then
+            echo "❌ Found $VULN_FOUND vulnerabilities, only $VULN_FIXED were fixed"
+            echo "⚠️  $(($VULN_FOUND - $VULN_FIXED)) vulnerabilities require attention"
+            exit 1
+          else
+            echo "✅ All $VULN_FOUND vulnerabilities were successfully fixed"
+          fi

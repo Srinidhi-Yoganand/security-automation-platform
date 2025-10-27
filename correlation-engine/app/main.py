@@ -15,16 +15,18 @@ from pydantic import BaseModel
 
 # Import semantic analysis router
 from app.api.semantic_routes import router as semantic_router
+# Import end-to-end pipeline router
+from app.api.e2e_routes import router as e2e_router
 
 # Application metadata
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __title__ = "Security Correlation Engine"
 
 # Create FastAPI app
 app = FastAPI(
     title=__title__,
     version=__version__,
-    description="Intelligent security findings correlation and analysis platform",
+    description="Intelligent security findings correlation and analysis platform with end-to-end automated patching",
 )
 
 # CORS middleware
@@ -38,6 +40,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(semantic_router)
+app.include_router(e2e_router)
 
 
 # Models

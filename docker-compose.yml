@@ -43,7 +43,10 @@ services:
 
   # Security Automation Platform (Correlation Engine)
   correlation-engine:
-    image: srinidhiyoganand/security-automation:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: security-automation-platform:latest
     container_name: security-correlation
     ports:
       - "8000:8000"
@@ -51,50 +54,54 @@ services:
       # Mount YOUR application directory here
       # Change TARGET_APP_PATH to point to your application
       - ${TARGET_APP_PATH:-.}:/target-app:ro
-      # Persist scan results and patches
-      - correlation-data:/app/data
+      # Persist scan results, patches, and CodeQL databases
+      - correlation-data:/data
       - ./test-data:/app/test-data
+      - codeql-databases:/data/codeql-databases
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_PROVIDER=ollama
-      - OLLAMA_MODEL=deepseek-coder:6.7b-instruct
-      - DATABASE_URL=sqlite:///./data/security.db
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-deepseek-coder:6.7b-instruct}
+      - DATABASE_URL=sqlite:////data/security.db
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - TARGET_APP_PATH=/target-app
+      - CODEQL_HOME=/opt/codeql
+      - CODEQL_QUERIES=/opt/codeql-repo
     networks:
       - security-automation-network
     depends_on:
       ollama:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/status"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     restart: unless-stopped
     command: >
       sh -c "
         echo '🚀 Security Automation Platform Starting...'
         echo '📁 Target Application: /target-app'
-        echo '🤖 LLM Provider: Ollama (DeepSeek Coder)'
-        echo ''
-        echo 'Waiting for Ollama and pulling model...'
-        sleep 10
-        python -c 'import ollama; ollama.pull(\"deepseek-coder:6.7b-instruct\")' || true
+        echo '🤖 LLM Provider: ${LLM_PROVIDER:-ollama}'
+        echo '🔍 CodeQL Home: /opt/codeql'
         echo ''
         echo '✅ Platform Ready!'
         echo ''
-        echo 'API Endpoints:'
-        echo '  - Health: http://localhost:8000/health'
-        echo '  - Scan: POST http://localhost:8000/api/scan'
-        echo '  - Generate Patches: POST http://localhost:8000/api/patches/generate'
-        echo '  - Dashboard: GET http://localhost:8000/api/dashboard'
+        echo '🌐 API Endpoints:'
+        echo '  - Status: http://localhost:8000/api/v1/status'
+        echo '  - E2E Analysis: POST http://localhost:8000/api/v1/e2e/analyze-and-fix'
+        echo '  - Semantic Analysis: POST http://localhost:8000/api/v1/semantic/analyze'
+        echo '  - Generate Patches: POST http://localhost:8000/api/v1/vulnerabilities/{id}/generate-patch'
+        echo '  - Dashboard: GET http://localhost:8000/api/v1/dashboard'
         echo ''
-        echo 'CLI Usage (inside container):'
-        echo '  docker exec security-correlation python api_client.py scan /target-app'
+        echo '🔧 CLI Usage (inside container):'
+        echo '  docker exec security-correlation python api_client.py'
         echo ''
-        uvicorn app.main:app --host 0.0.0.0 --port 8000
+        echo '📚 Documentation: http://localhost:8000/docs (Swagger UI)'
+        echo ''
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
 
 volumes:
@@ -102,6 +109,8 @@ volumes:
     name: security-ollama-models
   correlation-data:
     name: security-correlation-data
+  codeql-databases:
+    name: security-codeql-databases
 
 networks:
   security-automation-network:
