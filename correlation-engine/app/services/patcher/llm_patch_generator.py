@@ -49,6 +49,14 @@ except ImportError:
     SEMANTIC_CONTEXT_AVAILABLE = False
     EnhancedPatchContext = None
 
+# Import semantic patch generator
+try:
+    from .semantic_patch_generator import SemanticPatchGenerator
+    SEMANTIC_PATCH_AVAILABLE = True
+except ImportError:
+    SEMANTIC_PATCH_AVAILABLE = False
+    SemanticPatchGenerator = None
+
 
 class PatchStatus(str, Enum):
     """Status of generated patch"""
@@ -148,6 +156,12 @@ class LLMPatchGenerator:
                 print(f"WARNING: Could not load git repository: {e}")
         else:
             print("[INFO] GitPython not available - git features disabled")
+        
+        # Initialize semantic patch generator for template-based fallback
+        if SEMANTIC_PATCH_AVAILABLE:
+            self.semantic_generator = SemanticPatchGenerator()
+        else:
+            self.semantic_generator = None
     
     def _detect_llm_provider(self) -> str:
         """Auto-detect best available LLM provider"""
@@ -777,7 +791,23 @@ public ResponseEntity<?> sensitiveOperation() {{
         vuln_type = context['vulnerability_type'].lower()
         vulnerable_code = context['vulnerable_code']
         
-        # Basic template-based fixes
+        # Try semantic patch generator first (uses symbolic execution findings)
+        if self.semantic_generator:
+            semantic_patch = self.semantic_generator.generate_semantic_patch(
+                vulnerable_code=vulnerable_code,
+                vulnerability_type=context['vulnerability_type'],
+                missing_check=context.get('missing_check'),
+                attack_vector=context.get('attack_vector'),
+                framework=context.get('framework', 'spring'),
+                method_name=context.get('method_name'),
+                class_name=context.get('class_name')
+            )
+            
+            if semantic_patch and semantic_patch.get('confidence') == 'high':
+                print(f"[SEMANTIC] Generated high-confidence patch using symbolic execution data")
+                return semantic_patch
+        
+        # Basic template-based fixes (legacy)
         if 'sql' in vuln_type or 'injection' in vuln_type:
             if '+' in vulnerable_code or 'concat' in vulnerable_code.lower():
                 fixed = self._fix_sql_injection_template(vulnerable_code, context)
