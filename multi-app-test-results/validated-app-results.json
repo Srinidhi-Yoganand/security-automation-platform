@@ -1,0 +1,135 @@
+{
+  "test_date": "2025-10-27T23:59:19.407278",
+  "application": {
+    "name": "VulnerableApp.java",
+    "loc": 108,
+    "language": "Java",
+    "known_vulnerabilities": 10
+  },
+  "scan_results": {
+    "codeql": 7,
+    "sonarqube": 5,
+    "zap": 3,
+    "iast": 2,
+    "total_before_correlation": 17
+  },
+  "correlation": {
+    "unique_vulnerabilities": 10,
+    "reduction_rate": 41.2,
+    "findings": [
+      {
+        "vulnerability_type": "SQL Injection",
+        "sources": [
+          "CodeQL",
+          "SonarQube",
+          "ZAP",
+          "IAST"
+        ],
+        "num_sources": 4,
+        "validation_level": "UNANIMOUS",
+        "confidence": 0.99,
+        "avg_tool_confidence": 0.91
+      },
+      {
+        "vulnerability_type": "XSS",
+        "sources": [
+          "CodeQL",
+          "SonarQube",
+          "ZAP"
+        ],
+        "num_sources": 3,
+        "validation_level": "STRONG",
+        "confidence": 0.9,
+        "avg_tool_confidence": 0.83
+      },
+      {
+        "vulnerability_type": "Path Traversal",
+        "sources": [
+          "CodeQL",
+          "SonarQube"
+        ],
+        "num_sources": 2,
+        "validation_level": "MODERATE",
+        "confidence": 0.75,
+        "avg_tool_confidence": 0.9
+      },
+      {
+        "vulnerability_type": "Command Injection",
+        "sources": [
+          "CodeQL",
+          "IAST"
+        ],
+        "num_sources": 2,
+        "validation_level": "MODERATE",
+        "confidence": 0.75,
+        "avg_tool_confidence": 0.97
+      },
+      {
+        "vulnerability_type": "Hardcoded Credentials",
+        "sources": [
+          "CodeQL"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.88
+      },
+      {
+        "vulnerability_type": "Weak Crypto",
+        "sources": [
+          "CodeQL"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.85
+      },
+      {
+        "vulnerability_type": "XXE",
+        "sources": [
+          "CodeQL"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.91
+      },
+      {
+        "vulnerability_type": "Insecure Deserialization",
+        "sources": [
+          "SonarQube"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.87
+      },
+      {
+        "vulnerability_type": "LDAP Injection",
+        "sources": [
+          "SonarQube"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.83
+      },
+      {
+        "vulnerability_type": "CSRF",
+        "sources": [
+          "ZAP"
+        ],
+        "num_sources": 1,
+        "validation_level": "SINGLE",
+        "confidence": 0.4,
+        "avg_tool_confidence": 0.7
+      }
+    ]
+  },
+  "metrics": {
+    "detection_rate": 100.0,
+    "false_positive_rate": 0.0,
+    "false_negatives": 0,
+    "accuracy": 100.0
+  }
+}
