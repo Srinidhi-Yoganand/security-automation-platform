@@ -1,0 +1,236 @@
+# Security Automation Action
+# Reusable GitHub Action for automated security analysis and patching
+
+name: 'Security Automation Platform'
+description: 'Automated vulnerability detection and patching using CodeQL, Z3, and LLM'
+author: 'Your Organization'
+
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  target_path:
+    description: 'Path to analyze (relative to repository root)'
+    required: false
+    default: '.'
+  
+  language:
+    description: 'Programming language (java, python, javascript, go)'
+    required: false
+    default: 'java'
+  
+  generate_patches:
+    description: 'Generate security patches (true/false)'
+    required: false
+    default: 'true'
+  
+  create_pr:
+    description: 'Automatically create pull request with patches (true/false)'
+    required: false
+    default: 'true'
+  
+  llm_provider:
+    description: 'LLM provider for patch generation (template, gemini, openai, ollama)'
+    required: false
+    default: 'template'
+  
+  gemini_api_key:
+    description: 'Google Gemini API key (if using gemini provider)'
+    required: false
+    default: ''
+  
+  openai_api_key:
+    description: 'OpenAI API key (if using openai provider)'
+    required: false
+    default: ''
+  
+  github_token:
+    description: 'GitHub token for PR creation'
+    required: true
+  
+  fail_on_vulnerabilities:
+    description: 'Fail build if vulnerabilities are found (true/false)'
+    required: false
+    default: 'true'
+  
+  upload_sarif:
+    description: 'Upload SARIF results to GitHub Security (true/false)'
+    required: false
+    default: 'true'
+
+outputs:
+  vulnerabilities_found:
+    description: 'Number of vulnerabilities detected'
+    value: ${{ steps.analyze.outputs.vulnerabilities_found }}
+  
+  vulnerabilities_fixed:
+    description: 'Number of vulnerabilities fixed'
+    value: ${{ steps.analyze.outputs.vulnerabilities_fixed }}
+  
+  pr_url:
+    description: 'URL of created pull request (if create_pr=true)'
+    value: ${{ steps.analyze.outputs.pr_url }}
+  
+  pr_number:
+    description: 'Number of created pull request (if create_pr=true)'
+    value: ${{ steps.analyze.outputs.pr_number }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Pull Security Platform Image
+      shell: bash
+      run: |
+        docker pull srinidhiyoganand/security-automation-platform:latest || \
+        docker build -t security-automation-platform:latest \
+          https://github.com/Srinidhi-Yoganand/security-automation-platform.git
+    
+    - name: Run Security Analysis
+      id: analyze
+      shell: bash
+      env:
+        GEMINI_API_KEY: ${{ inputs.gemini_api_key }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        echo "🔍 Starting security analysis..."
+        
+        # Start platform container
+        docker run -d \
+          --name security-platform-${{ github.run_id }} \
+          -v ${{ github.workspace }}:/target-app:ro \
+          -v security-results-${{ github.run_id }}:/data \
+          -e GEMINI_API_KEY="${GEMINI_API_KEY}" \
+          -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
+          -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
+          -e LLM_PROVIDER="${{ inputs.llm_provider }}" \
+          -p 8000:8000 \
+          security-automation-platform:latest
+        
+        # Wait for platform
+        timeout 60 bash -c 'until curl -s http://localhost:8000/api/v1/e2e/status > /dev/null; do sleep 2; done'
+        
+        # Run analysis
+        ENDPOINT="/api/v1/e2e/analyze-and-fix"
+        if [ "${{ inputs.create_pr }}" = "true" ]; then
+          ENDPOINT="/api/v1/e2e/analyze-and-fix-with-pr"
+        fi
+        
+        curl -X POST "http://localhost:8000${ENDPOINT}" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"source_path\": \"/target-app/${{ inputs.target_path }}\",
+            \"language\": \"${{ inputs.language }}\",
+            \"generate_patches\": ${{ inputs.generate_patches }},
+            \"validate_patches\": true,
+            \"llm_provider\": \"${{ inputs.llm_provider }}\"
+          }" \
+          -o analysis-results.json
+        
+        # Extract results
+        VULN_FOUND=$(jq -r '.vulnerabilities_found // 0' analysis-results.json)
+        VULN_FIXED=$(jq -r '.vulnerabilities_fixed // 0' analysis-results.json)
+        PR_URL=$(jq -r '.summary.pr_url // ""' analysis-results.json)
+        PR_NUMBER=$(jq -r '.summary.pr_number // ""' analysis-results.json)
+        
+        # Set outputs
+        echo "vulnerabilities_found=${VULN_FOUND}" >> $GITHUB_OUTPUT
+        echo "vulnerabilities_fixed=${VULN_FIXED}" >> $GITHUB_OUTPUT
+        echo "pr_url=${PR_URL}" >> $GITHUB_OUTPUT
+        echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+        
+        # Save results
+        docker cp security-platform-${{ github.run_id }}:/data/results ./security-results || true
+        docker cp security-platform-${{ github.run_id }}:/data/patches ./security-patches || true
+        
+        # Stop container
+        docker stop security-platform-${{ github.run_id }}
+        docker rm security-platform-${{ github.run_id }}
+        
+        echo "✅ Analysis complete!"
+        echo "   Vulnerabilities found: ${VULN_FOUND}"
+        echo "   Vulnerabilities fixed: ${VULN_FIXED}"
+        if [ -n "${PR_URL}" ]; then
+          echo "   Pull request: ${PR_URL}"
+        fi
+    
+    - name: Upload SARIF Results
+      if: inputs.upload_sarif == 'true'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: security-results/
+        category: security-automation-platform
+      continue-on-error: true
+    
+    - name: Generate Report
+      shell: bash
+      run: |
+        cat > security-report.md << 'EOF'
+        # 🔒 Security Analysis Report
+        
+        ## Summary
+        - **Vulnerabilities Found:** ${{ steps.analyze.outputs.vulnerabilities_found }}
+        - **Vulnerabilities Fixed:** ${{ steps.analyze.outputs.vulnerabilities_fixed }}
+        - **LLM Provider:** ${{ inputs.llm_provider }}
+        
+        ## Analysis Method
+        This scan used a hybrid approach:
+        1. 🔍 **CodeQL Semantic Analysis** - Deep code understanding
+        2. 🧮 **Z3 Symbolic Execution** - Formal verification
+        3. 🤖 **LLM-Powered Patching** - AI-generated fixes
+        4. ✅ **Automated Validation** - Multi-level verification
+        
+        EOF
+        
+        if [ -n "${{ steps.analyze.outputs.pr_url }}" ]; then
+          echo "## Pull Request" >> security-report.md
+          echo "Patches have been submitted in PR #${{ steps.analyze.outputs.pr_number }}" >> security-report.md
+          echo "**URL:** ${{ steps.analyze.outputs.pr_url }}" >> security-report.md
+        fi
+        
+        cat security-report.md
+    
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('security-report.md', 'utf8');
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: report
+          });
+    
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-analysis-results
+        path: |
+          analysis-results.json
+          security-report.md
+          security-results/
+          security-patches/
+        retention-days: 90
+    
+    - name: Check Vulnerabilities
+      if: inputs.fail_on_vulnerabilities == 'true'
+      shell: bash
+      run: |
+        VULN_FOUND=${{ steps.analyze.outputs.vulnerabilities_found }}
+        VULN_FIXED=${{ steps.analyze.outputs.vulnerabilities_fixed }}
+        
+        if [ "$VULN_FOUND" -gt 0 ] && [ "$VULN_FOUND" -gt "$VULN_FIXED" ]; then
+          echo "❌ Found ${VULN_FOUND} vulnerabilities, only ${VULN_FIXED} were fixed"
+          exit 1
+        fi
+        
+        echo "✅ All vulnerabilities addressed"

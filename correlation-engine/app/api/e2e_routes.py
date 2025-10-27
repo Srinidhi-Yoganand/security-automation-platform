@@ -350,6 +350,115 @@ async def analyze_and_fix(request: AnalyzeAndFixRequest):
     )
 
 
+@router.post("/analyze-and-fix-with-pr")
+async def analyze_and_fix_with_pr(request: AnalyzeAndFixRequest, create_pr: bool = True, github_token: Optional[str] = None):
+    """
+    Complete end-to-end analysis with automatic PR creation
+    
+    Same as /analyze-and-fix but also:
+    - Creates git branch with patches
+    - Pushes branch to GitHub
+    - Creates pull request automatically
+    
+    Requires GITHUB_TOKEN environment variable or github_token parameter
+    """
+    # Run standard analysis
+    analysis_result = await analyze_and_fix(request)
+    
+    if not analysis_result.success or analysis_result.vulnerabilities_fixed == 0:
+        return analysis_result
+    
+    if not create_pr:
+        return analysis_result
+    
+    # Create PR with patches
+    print("\n" + "="*80)
+    print("CREATING PULL REQUEST")
+    print("="*80)
+    
+    try:
+        from app.services.github_integration import create_pr_for_patches
+        import os
+        from datetime import datetime
+        
+        # Use provided token or env variable
+        token = github_token or os.getenv("GITHUB_TOKEN")
+        
+        if not token:
+            print("⚠️  GITHUB_TOKEN not provided, skipping PR creation")
+            analysis_result.summary["pr_created"] = False
+            analysis_result.summary["pr_url"] = None
+            return analysis_result
+        
+        # Create branch name
+        branch_name = f"security-patches-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        
+        # Create PR
+        pr_data = create_pr_for_patches(
+            repo_path=request.source_path,
+            branch_name=branch_name,
+            vulnerabilities_fixed=analysis_result.vulnerabilities_fixed,
+            patches_details=analysis_result.results,
+            github_token=token
+        )
+        
+        if pr_data:
+            print(f"✅ Pull request created: {pr_data['html_url']}")
+            analysis_result.summary["pr_created"] = True
+            analysis_result.summary["pr_url"] = pr_data["html_url"]
+            analysis_result.summary["pr_number"] = pr_data["number"]
+        else:
+            print("⚠️  Failed to create pull request")
+            analysis_result.summary["pr_created"] = False
+            analysis_result.summary["pr_url"] = None
+        
+    except Exception as e:
+        print(f"❌ Error creating PR: {e}")
+        analysis_result.summary["pr_created"] = False
+        analysis_result.summary["pr_error"] = str(e)
+    
+    print("="*80 + "\n")
+    
+    return analysis_result
+
+
+@router.get("/dashboard")
+async def get_dashboard(include_behavior: bool = True):
+    """
+    Get interactive HTML dashboard with analysis results
+    
+    Args:
+        include_behavior: Include behavior analysis data (default: true)
+        
+    Returns:
+        HTML dashboard
+    """
+    from fastapi.responses import HTMLResponse
+    from app.services.dashboard_generator import DashboardGenerator
+    from pathlib import Path
+    
+    # Load latest analysis results if available
+    results_file = Path("test-data/e2e-api-results.json")
+    
+    if results_file.exists():
+        import json
+        with open(results_file, 'r') as f:
+            data = json.load(f)
+    else:
+        # Generate empty dashboard
+        data = {
+            "vulnerabilities_found": 0,
+            "vulnerabilities_fixed": 0,
+            "results": []
+        }
+    
+    # Generate dashboard
+    generator = DashboardGenerator(include_behavior_analysis=include_behavior)
+    html = generator.generate(data)
+    
+    return HTMLResponse(content=html)
+
+
 @router.get("/status")
 async def get_pipeline_status():
     """Get status of end-to-end pipeline components"""
@@ -417,5 +526,12 @@ async def get_pipeline_status():
     
     # Validation always available
     status["stages"]["patch_validation"] = {"available": True}
+    
+    # Check GitHub integration
+    import os
+    status["github_integration"] = {
+        "available": bool(os.getenv("GITHUB_TOKEN")),
+        "pr_creation_enabled": bool(os.getenv("GITHUB_TOKEN"))
+    }
     
     return status
