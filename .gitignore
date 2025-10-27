@@ -57,6 +57,15 @@ codeql-databases/
 .cache/
 codeql-results/
 
+# CodeQL installation (large binary files)
+tools/codeql/
+tools/codeql-repo/
+
+# Sample/test apps (not part of main project)
+sample-vuln-app/
+test-data/patch_output.txt
+test-data/vuln/
+
 # Java compiled
 *.class
 *.jar
