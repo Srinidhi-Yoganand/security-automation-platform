@@ -1,38 +1,30 @@
 version: '3.8'
 
-# ==============================================================
-# SECURITY AUTOMATION PLATFORM - PLUGGABLE CONFIGURATION
-# ==============================================================
-# This setup allows you to scan ANY application by mounting
-# its directory into the correlation-engine container.
+# ==============================================================================
+# SECURITY AUTOMATION PLATFORM - Production Deployment
+# ==============================================================================
+# Pre-built Docker images from Docker Hub - no source code needed!
 #
-# Usage:
-#   1. Set TARGET_APP_PATH environment variable to your app's directory
-#   2. Run: docker-compose up -d
-#   3. Scan via API or CLI
+# Quick Start:
+#   1. docker-compose up -d
+#   2. Access dashboard: http://localhost:8000/api/v1/e2e/dashboard
+#   3. API docs: http://localhost:8000/docs
 #
-# Example:
-#   TARGET_APP_PATH=./my-java-app docker-compose up -d
-#   curl -X POST http://localhost:8000/api/scan -d '{"path": "/target-app"}'
-# ==============================================================
+# Scan your app:
+#   curl -X POST http://localhost:8000/api/v1/e2e/analyze-and-fix-with-pr \
+#     -H "Content-Type: application/json" \
+#     -d '{"source_path": "/path/to/your/app", "language": "java"}'
+# ==============================================================================
 
 services:
-  # Ollama LLM for AI-powered patch generation
+  # Ollama LLM Service - AI-powered patch generation
   ollama:
     image: ollama/ollama:latest
     container_name: security-ollama
     ports:
       - "11434:11434"
     volumes:
-      - ollama-models:/root/.ollama
-    networks:
-      - security-automation-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
+      - ollama_data:/root/.ollama
     restart: unless-stopped
     deploy:
       resources:
@@ -40,79 +32,86 @@ services:
           memory: 12G
         reservations:
           memory: 8G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Security Automation Platform (Correlation Engine)
+  # Security Automation Platform - Main Service
   correlation-engine:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: security-automation-platform:latest
-    container_name: security-correlation
-    ports:
-      - "8000:8000"
-    volumes:
-      # Mount YOUR application directory here
-      # Change TARGET_APP_PATH to point to your application
-      - ${TARGET_APP_PATH:-.}:/target-app:ro
-      # Persist scan results, patches, and CodeQL databases
-      - correlation-data:/data
-      - ./test-data:/app/test-data
-      - codeql-databases:/data/codeql-databases
+    image: srinidhiyoganand/security-automation-platform:latest
+    container_name: security-correlation-engine
     environment:
+      # LLM Configuration
       - OLLAMA_HOST=http://ollama:11434
       - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-deepseek-coder:6.7b-instruct}
-      - DATABASE_URL=sqlite:////data/security.db
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      
+      # Alternative LLM Providers (optional)
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - TARGET_APP_PATH=/target-app
-      - CODEQL_HOME=/opt/codeql
-      - CODEQL_QUERIES=/opt/codeql-repo
-    networks:
-      - security-automation-network
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      
+      # Database
+      - DATABASE_URL=sqlite:///./data/security.db
+      
+      # GitHub Integration (for PR creation)
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      
+      # Notifications (optional)
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-}
+    
     depends_on:
       ollama:
         condition: service_healthy
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Mount YOUR application for scanning
+      - ${TARGET_APP_PATH:-.}:/target-app:ro
+      
+      # Data persistence (databases, scan results, patches)
+      - correlation_data:/app/data
+      
+      # CodeQL databases cache
+      - codeql_data:/app/codeql-databases
+    
+    restart: unless-stopped
+    
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
-    command: >
-      sh -c "
-        echo '🚀 Security Automation Platform Starting...'
-        echo '📁 Target Application: /target-app'
-        echo '🤖 LLM Provider: ${LLM_PROVIDER:-ollama}'
-        echo '🔍 CodeQL Home: /opt/codeql'
-        echo ''
-        echo '✅ Platform Ready!'
-        echo ''
-        echo '🌐 API Endpoints:'
-        echo '  - Status: http://localhost:8000/api/v1/status'
-        echo '  - E2E Analysis: POST http://localhost:8000/api/v1/e2e/analyze-and-fix'
-        echo '  - Semantic Analysis: POST http://localhost:8000/api/v1/semantic/analyze'
-        echo '  - Generate Patches: POST http://localhost:8000/api/v1/vulnerabilities/{id}/generate-patch'
-        echo '  - Dashboard: GET http://localhost:8000/api/v1/dashboard'
-        echo ''
-        echo '🔧 CLI Usage (inside container):'
-        echo '  docker exec security-correlation python api_client.py'
-        echo ''
-        echo '📚 Documentation: http://localhost:8000/docs (Swagger UI)'
-        echo ''
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-      "
+    
+    networks:
+      - security-network
 
 volumes:
-  ollama-models:
+  ollama_data:
     name: security-ollama-models
-  correlation-data:
+    driver: local
+  
+  correlation_data:
     name: security-correlation-data
-  codeql-databases:
-    name: security-codeql-databases
+    driver: local
+  
+  codeql_data:
+    name: security-codeql-cache
+    driver: local
 
 networks:
-  security-automation-network:
+  security-network:
     name: security-automation-network
     driver: bridge

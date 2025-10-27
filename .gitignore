@@ -1,22 +1,30 @@
+# Build artifacts and large files
+codeql-databases/
+codeql-results/
+tools/
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
 .Python
-venv/
-env/
-.venv/
+*.so
+*.egg
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.venv/
+venv/
+env/
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Java
+*.jar
+target/
+*.class
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -29,50 +37,23 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
-# Environment
-.env
-.env.local
-
-# Maven
-target/
-pom.xml.tag
-pom.xml.releaseBackup
-pom.xml.versionsBackup
-pom.xml.next
-release.properties
+# Test outputs
+test-data/*.json
+test-data/*.html
+test-data/vuln/
 
 # Docker
 .dockerignore
 
-# Test outputs
-test-data/*.html
-test-data/*.json
-!test-data/semgrep-results.sarif
-!test-data/zap-results.json
-
-# CodeQL databases and results
-codeql-databases/
-*.sarif
-.cache/
-codeql-results/
-
-# CodeQL installation (large binary files)
-tools/codeql/
-tools/codeql-repo/
-
-# Sample/test apps (not part of main project)
-sample-vuln-app/
-test-data/patch_output.txt
-test-data/vuln/
-
-# Java compiled
-*.class
-*.jar
-!vulnerable-app/target/*.jar
-*.war
-*.ear
-
-# Temporary files
+# Temp
 *.tmp
-*.temp
+*.bak
+*.old
+
+# Example/test apps (not part of main platform)
+sample-vuln-app/
+vulnerable-app/
+test-vuln-app/
+examples/

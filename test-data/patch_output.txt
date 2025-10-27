@@ -1,0 +1,42 @@
+Initializing LLMPatchGenerator (repo_path=/app, llm_provider=ollama)
+[OK] Ollama initialized (model: deepseek-coder:6.7b-instruct)
+WARNING: Could not load git repository: /app
+[LLM] Generating patch for SQL Injection...
+[OK] Ollama (deepseek-coder:6.7b-instruct) generated patch
+Patch result:
+GeneratedPatch(vulnerability_id=None, vulnerability_type='SQL Injection', file_path='test-data/vuln/Example.java', line_number=6, original_code='public class Example {', fixed_code='package vuln;\n\nimport java.sql.Connection;\nimport java.sql.PreparedStatement;\n\npublic class Example {\n    public void searchUsers(String username, Connection connection) throws Exception {\n        String query = "SELECT * FROM users WHERE username = ?";\n        PreparedStatement pstmt = connection.prepareStatement(query);\n        pstmt.setString(1, username);\n        pstmt.executeQuery();\n    }\n}', explanation='The original code is vulnerable to SQL Injection attacks because it uses string concatenation to build the SQL query.\nThis can be mitigated by using parameterized queries (PreparedStatements) which are safer as they separate SQL logic from data, preventing an attacker from modifying the intent of a statement. The username input is bound as a parameter in a safe way with `pstmt.setString(1, username);`\nAdditionally, we have ensured that only validated and sanitized inputs are used to prevent malicious injection attempts.\nThe code has been updated to follow Java/Spring Boot conventions.', diff='--- a/test-data/vuln/Example.java\n+++ b/test-data/vuln/Example.java\n@@ -6,1 +6,13 @@\n-public class Example {\n+package vuln;\n+\n+import java.sql.Connection;\n+import java.sql.PreparedStatement;\n+\n+public class Example {\n+    public void searchUsers(String username, Connection connection) throws Exception {\n+        String query = "SELECT * FROM users WHERE username = ?";\n+        PreparedStatement pstmt = connection.prepareStatement(query);\n+        pstmt.setString(1, username);\n+        pstmt.executeQuery();\n+    }\n+}\n', confidence='high', status=<PatchStatus.GENERATED: 'generated'>, test_branch=None, test_results=None, manual_review_needed=True, breaking_changes=[], prerequisites=['Java 8 or later'], remediation_guide='https://owasp.org/www-community/controls/Parameterized_input')
+
+--- DIFF ---
+--- a/test-data/vuln/Example.java
++++ b/test-data/vuln/Example.java
+@@ -6,1 +6,13 @@
+-public class Example {
++package vuln;
++
++import java.sql.Connection;
++import java.sql.PreparedStatement;
++
++public class Example {
++    public void searchUsers(String username, Connection connection) throws Exception {
++        String query = "SELECT * FROM users WHERE username = ?";
++        PreparedStatement pstmt = connection.prepareStatement(query);
++        pstmt.setString(1, username);
++        pstmt.executeQuery();
++    }
++}
+
+
+--- FIXED CODE ---
+package vuln;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+
+public class Example {
+    public void searchUsers(String username, Connection connection) throws Exception {
+        String query = "SELECT * FROM users WHERE username = ?";
+        PreparedStatement pstmt = connection.prepareStatement(query);
+        pstmt.setString(1, username);
+        pstmt.executeQuery();
+    }
+}

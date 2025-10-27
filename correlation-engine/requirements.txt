@@ -18,6 +18,9 @@ numpy==1.26.2
 # Git integration (Phase 2)
 gitpython==3.1.40
 
+# GitHub API integration (Phase 4)
+requests==2.31.0
+
 # Security scanning result parsers
 sarif-om==1.0.4
 defusedxml==0.7.1
