@@ -57,6 +57,14 @@ except ImportError:
     SEMANTIC_PATCH_AVAILABLE = False
     SemanticPatchGenerator = None
 
+# Import CVE database
+try:
+    from .cve_database import get_cve_database
+    CVE_DB_AVAILABLE = True
+except ImportError:
+    CVE_DB_AVAILABLE = False
+    get_cve_database = None
+
 
 class PatchStatus(str, Enum):
     """Status of generated patch"""
@@ -162,6 +170,12 @@ class LLMPatchGenerator:
             self.semantic_generator = SemanticPatchGenerator()
         else:
             self.semantic_generator = None
+        
+        # Initialize CVE database
+        if CVE_DB_AVAILABLE:
+            self.cve_db = get_cve_database()
+        else:
+            self.cve_db = None
     
     def _detect_llm_provider(self) -> str:
         """Auto-detect best available LLM provider"""
@@ -296,7 +310,11 @@ class LLMPatchGenerator:
         if not patch_data:
             return None
         
-        # Step 3: Create patch object
+        # Step 3: Enrich patch with CVE references
+        if self.cve_db:
+            patch_data = self.cve_db.enrich_patch_with_cve(patch_data, context.vulnerability_type)
+        
+        # Step 4: Create patch object
         patch = GeneratedPatch(
             vulnerability_id=None,
             vulnerability_type=context.vulnerability_type,
@@ -316,10 +334,10 @@ class LLMPatchGenerator:
             breaking_changes=patch_data.get('breaking_changes', []),
             prerequisites=patch_data.get('prerequisites', []),
             manual_review_needed=True,
-            remediation_guide=patch_data.get('remediation_guide')
+            remediation_guide=patch_data.get('detailed_remediation') or patch_data.get('remediation_guide')
         )
         
-        # Step 4: Test patch in separate branch (if requested)
+        # Step 5: Test patch in separate branch (if requested)
         if test_patch and self.repo:
             test_result = self._test_patch_in_branch(patch, context)
             patch.test_results = test_result
