@@ -1,13 +1,14 @@
 """
 LLM-Powered Intelligent Patch Generator
 Generates security patches for ANY vulnerability type using LLMs
+Supports semantic-aware patching with CodeQL and symbolic execution integration
 """
 
 import os
 import re
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from enum import Enum
 
 try:
@@ -39,6 +40,14 @@ try:
     GITPYTHON_AVAILABLE = True
 except ImportError:
     GITPYTHON_AVAILABLE = False
+
+# Import semantic-aware context builder
+try:
+    from .context_builder import EnhancedPatchContext, SemanticContextBuilder
+    SEMANTIC_CONTEXT_AVAILABLE = True
+except ImportError:
+    SEMANTIC_CONTEXT_AVAILABLE = False
+    EnhancedPatchContext = None
 
 
 class PatchStatus(str, Enum):
@@ -240,12 +249,16 @@ class LLMPatchGenerator:
             self.llm_provider = "template"
 
     
-    def generate_patch(self, context: PatchContext, test_patch: bool = True) -> Optional[GeneratedPatch]:
+    def generate_patch(
+        self, 
+        context, 
+        test_patch: bool = True
+    ) -> Optional[GeneratedPatch]:
         """
         Generate intelligent security patch using LLM
         
         Args:
-            context: Vulnerability context
+            context: Vulnerability context (PatchContext or EnhancedPatchContext)
             test_patch: Whether to test patch in separate branch
             
         Returns:
@@ -253,13 +266,19 @@ class LLMPatchGenerator:
         """
         print(f"[LLM] Generating patch for {context.vulnerability_type}...")
         
+        # Check if using enhanced semantic-aware context
+        use_semantic = SEMANTIC_CONTEXT_AVAILABLE and EnhancedPatchContext and isinstance(context, EnhancedPatchContext)
+        
+        if use_semantic:
+            print("[LLM] Using semantic-aware context with symbolic execution data")
+        
         # Step 1: Gather full context
-        full_context = self._gather_context(context)
+        full_context = self._gather_context(context, use_semantic=use_semantic)
         if not full_context:
             return None
         
         # Step 2: Generate patch using LLM
-        patch_data = self._generate_with_llm(full_context)
+        patch_data = self._generate_with_llm(full_context, use_semantic=use_semantic)
         if not patch_data:
             return None
         
@@ -294,18 +313,58 @@ class LLMPatchGenerator:
         
         return patch
     
-    def _gather_context(self, context: PatchContext) -> Optional[Dict[str, Any]]:
+    def _gather_context(self, context, use_semantic: bool = False) -> Optional[Dict[str, Any]]:
         """
-        Gather complete context around vulnerability
+        Gather complete context for patch generation
         
+        Args:
+            context: PatchContext or EnhancedPatchContext
+            use_semantic: Whether using semantic-aware enhanced context
+            
         Returns:
             Dict with file content, surrounding code, class/method info
         """
+        # If using EnhancedPatchContext, it already has all the data we need
+        if use_semantic:
+            return {
+                'file_path': context.file_path,
+                'vulnerable_code': context.vulnerable_code,
+                'surrounding_code': context.surrounding_context,
+                'method_name': context.method_name,
+                'class_name': context.class_name,
+                'vulnerability_type': context.vulnerability_type,
+                'severity': context.severity,
+                'description': context.description,
+                'line_number': context.line_number,
+                # Semantic-aware additions
+                'data_flow_path': context.data_flow_path,
+                'security_context': context.security_context,
+                'framework': context.framework,
+                'symbolically_verified': context.symbolically_verified,
+                'exploit_proof': context.exploit_proof,
+                'attack_vector': context.attack_vector,
+                'missing_check': context.missing_check,
+                'confidence': context.confidence,
+            }
+        
+        # Legacy PatchContext - gather data manually
         file_path = self.repo_path / context.file_path
         
         if not file_path.exists():
-            print(f"ERROR: File not found: {file_path}")
-            return None
+            print(f"WARNING: File not found: {file_path}, using context data only")
+            # Return minimal context if file doesn't exist
+            return {
+                'file_path': context.file_path,
+                'vulnerable_code': context.vulnerable_code,
+                'surrounding_code': context.surrounding_context,
+                'method_name': context.method_name,
+                'class_name': context.class_name,
+                'vulnerability_type': context.vulnerability_type,
+                'severity': context.severity,
+                'description': context.description,
+                'cwe_id': context.cwe_id,
+                'line_number': context.line_number
+            }
         
         # Read full file
         try:
@@ -339,9 +398,13 @@ class LLMPatchGenerator:
             'line_number': context.line_number
         }
     
-    def _generate_with_llm(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _generate_with_llm(self, context: Dict[str, Any], use_semantic: bool = False) -> Optional[Dict[str, Any]]:
         """
         Use LLM to generate intelligent patch
+        
+        Args:
+            context: Full context dictionary
+            use_semantic: Whether to use semantic-aware prompt
         
         Returns:
             Dict with fixed_code, explanation, confidence, breaking_changes, prerequisites
@@ -349,8 +412,8 @@ class LLMPatchGenerator:
         if self.llm_provider == "template":
             return self._fallback_template_patch(context)
         
-        # Construct prompt for LLM
-        prompt = self._build_patch_prompt(context)
+        # Construct prompt for LLM (semantic-aware if enabled)
+        prompt = self._build_patch_prompt(context, use_semantic=use_semantic)
         
         try:
             if self.llm_provider == "gemini":
@@ -502,9 +565,14 @@ Return response in JSON format with:
             print(f"       Model: {self.ollama_model}")
             return None
     
-    def _build_patch_prompt(self, context: Dict[str, Any]) -> str:
+    def _build_patch_prompt(self, context: Dict[str, Any], use_semantic: bool = False) -> str:
         """Build detailed prompt for LLM patch generation"""
         
+        if use_semantic and context.get('symbolically_verified'):
+            # Enhanced semantic-aware prompt with symbolic execution data
+            return self._build_semantic_patch_prompt(context)
+        
+        # Standard prompt (legacy)
         prompt = f"""
 # Code Security Improvement Task
 
@@ -523,7 +591,7 @@ You are helping improve code security. Analyze this Java code and provide a secu
 
 ## Code Context
 ```java
-{context['surrounding_code'][:500]}
+{context['surrounding_code'][:500] if context.get('surrounding_code') else 'N/A'}
 ```
 
 ## Task
@@ -547,6 +615,162 @@ Please respond with ONLY a JSON object (no markdown, no explanation outside JSON
 """
         
         return prompt
+    
+    def _build_semantic_patch_prompt(self, context: Dict[str, Any]) -> str:
+        """Build semantic-aware prompt with symbolic execution proof"""
+        
+        # Extract semantic data
+        vuln_type = context['vulnerability_type'].upper()
+        severity = context['severity']
+        file_path = context['file_path']
+        line_num = context['line_number']
+        vuln_code = context['vulnerable_code']
+        surrounding = context.get('surrounding_code', '')
+        
+        # Data flow information
+        data_flow = context.get('data_flow_path', {})
+        source = data_flow.get('source', 'Unknown')
+        sink = data_flow.get('sink', 'Unknown')
+        steps = data_flow.get('intermediate_steps', [])
+        
+        # Security context
+        framework = context.get('framework', 'Unknown')
+        has_auth = context.get('security_context', {}).get('authentication_present', False)
+        has_authz = context.get('security_context', {}).get('authorization_present', False)
+        
+        # Symbolic execution proof
+        attack_vector = context.get('attack_vector', {})
+        missing_check = context.get('missing_check', '')
+        proof = context.get('exploit_proof', {}).get('proof', '')
+        
+        # Build rich prompt
+        prompt = f"""
+# Security Patch Generation with Symbolic Verification
+
+You are a security engineer fixing a **CONFIRMED** vulnerability with symbolic execution proof.
+
+## Vulnerability Analysis
+- **Type**: {vuln_type}
+- **Severity**: {severity}
+- **Location**: {file_path}:{line_num}
+- **Framework**: {framework}
+- **Confidence**: {context.get('confidence', 0.0):.1%} (symbolically verified)
+
+## Vulnerable Code
+```java
+{vuln_code}
+```
+
+## Data Flow Analysis (from CodeQL)
+**Source**: {source}
+**Sink**: {sink}
+"""
+        
+        if steps:
+            prompt += "\n**Data Flow Path**:\n"
+            for i, step in enumerate(steps, 1):
+                prompt += f"{i}. {step}\n"
+        
+        prompt += f"""
+## Security Context
+- Authentication Present: {has_auth}
+- Authorization Present: {has_authz}
+- Framework: {framework}
+
+## Symbolic Execution Proof (Z3 Solver)
+**Exploitability**: CONFIRMED
+"""
+        
+        if attack_vector:
+            prompt += "\n**Attack Vector**:\n"
+            for key, val in attack_vector.items():
+                prompt += f"- {key}: {val}\n"
+        
+        if missing_check:
+            prompt += f"\n**Root Cause**: {missing_check}\n"
+        
+        if proof:
+            prompt += f"\n**Proof**: {proof}\n"
+        
+        # Add surrounding context
+        if surrounding:
+            prompt += f"""
+## Code Context
+```java
+{surrounding[:800]}
+```
+"""
+        
+        # Instructions based on vulnerability type
+        prompt += self._get_vuln_type_instructions(vuln_type, missing_check)
+        
+        prompt += """
+## Required JSON Response
+Provide ONLY a valid JSON object (no markdown):
+{
+  "fixed_code": "complete secure code that addresses the root cause",
+  "explanation": "explain how the fix addresses the symbolic execution findings",
+  "confidence": "high",
+  "breaking_changes": [],
+  "prerequisites": ["any new dependencies"],
+  "remediation_guide": "security best practice reference"
+}
+"""
+        
+        return prompt
+    
+    def _get_vuln_type_instructions(self, vuln_type: str, missing_check: str) -> str:
+        """Get specific instructions based on vulnerability type"""
+        
+        vuln_type_lower = vuln_type.lower()
+        
+        if 'idor' in vuln_type_lower or 'insecure direct object' in vuln_type_lower:
+            return f"""
+## Fix Requirements for IDOR
+1. Add authorization check: `if (!hasAccessTo(userId, resourceId)) throw new AccessDeniedException()`
+2. Verify user owns the resource before accessing
+3. Use the current user's ID from SecurityContext, not the request parameter
+4. Example fix:
+```java
+// Get authenticated user
+Long currentUserId = SecurityContextHolder.getContext().getAuthentication().getUserId();
+// Verify ownership
+if (!resource.getOwnerId().equals(currentUserId)) {{
+    throw new AccessDeniedException("Not authorized");
+}}
+// Then proceed with operation
+```
+**Root Cause to Address**: {missing_check}
+"""
+        
+        elif 'missing' in vuln_type_lower and 'auth' in vuln_type_lower:
+            return f"""
+## Fix Requirements for Missing Authentication/Authorization
+1. Add @PreAuthorize or @Secured annotation to method
+2. Verify user has required role/permission
+3. Check ownership if accessing user-specific resources
+4. Example fix:
+```java
+@PreAuthorize("hasRole('USER')")
+public ResponseEntity<?> sensitiveOperation() {{
+    // Verify authorization
+    if (!authService.canAccess(currentUser, resource)) {{
+        throw new AccessDeniedException("Insufficient permissions");
+    }}
+    // Proceed with operation
+}}
+```
+**Root Cause to Address**: {missing_check}
+"""
+        
+        else:
+            return f"""
+## Fix Requirements
+1. Address the root cause: {missing_check}
+2. Follow framework security best practices
+3. Add input validation where needed
+4. Use framework-provided security mechanisms
+"""
     
     def _fallback_template_patch(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Fallback to template-based patching if LLM unavailable"""
@@ -618,11 +842,21 @@ Please respond with ONLY a JSON object (no markdown, no explanation outside JSON
     
     def _generate_diff(self, original: str, fixed: str, file_path: str, line_number: int) -> str:
         """Generate git-style diff"""
-        from diff_match_patch import diff_match_patch
-        
-        dmp = diff_match_patch()
-        patches = dmp.patch_make(original, fixed)
-        diff = dmp.patch_toText(patches)
+        try:
+            from diff_match_patch import diff_match_patch
+            
+            dmp = diff_match_patch()
+            patches = dmp.patch_make(original, fixed)
+            diff = dmp.patch_toText(patches)
+        except ImportError:
+            # Fallback to simple diff if diff_match_patch not available
+            diff = f"""--- a/{file_path}
++++ b/{file_path}
+@@ -{line_number} @@
+-{original}
++{fixed}
+"""
+            return diff
         
         # Format as git diff
         git_diff = f"""--- a/{file_path}
