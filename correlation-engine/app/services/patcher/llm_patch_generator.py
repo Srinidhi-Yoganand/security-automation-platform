@@ -28,8 +28,17 @@ try:
 except ImportError:
     OLLAMA_AVAILABLE = False
 
-import javalang
-from git import Repo
+try:
+    import javalang
+    JAVALANG_AVAILABLE = True
+except ImportError:
+    JAVALANG_AVAILABLE = False
+
+try:
+    from git import Repo
+    GITPYTHON_AVAILABLE = True
+except ImportError:
+    GITPYTHON_AVAILABLE = False
 
 
 class PatchStatus(str, Enum):
@@ -123,10 +132,13 @@ class LLMPatchGenerator:
             print(f"[INFO] Using template-based patching (no LLM)")
         
         # Try to load git repo
-        try:
-            self.repo = Repo(repo_path)
-        except Exception as e:
-            print(f"WARNING: Could not load git repository: {e}")
+        if GITPYTHON_AVAILABLE:
+            try:
+                self.repo = Repo(repo_path)
+            except Exception as e:
+                print(f"WARNING: Could not load git repository: {e}")
+        else:
+            print("[INFO] GitPython not available - git features disabled")
     
     def _detect_llm_provider(self) -> str:
         """Auto-detect best available LLM provider"""
@@ -575,6 +587,9 @@ Please respond with ONLY a JSON object (no markdown, no explanation outside JSON
     
     def _extract_method_context(self, file_content: str, line_number: int) -> Dict[str, Any]:
         """Extract method and class context from Java file"""
+        if not JAVALANG_AVAILABLE:
+            return {'method_name': None, 'class_name': None, 'method_signature': None}
+        
         try:
             tree = javalang.parse.parse(file_content)
             
