@@ -1,0 +1,109 @@
+version: '3.8'
+
+# ==============================================================================
+# SECURITY AUTOMATION PLATFORM - Local Testing with Ollama
+# ==============================================================================
+# Uses locally built image with Ollama for full integration testing
+#
+# Quick Start:
+#   docker compose -f docker-compose.test.yml up -d
+#
+# Access:
+#   - Dashboard: http://localhost:8000/api/v1/e2e/dashboard
+#   - API Docs: http://localhost:8000/docs
+#   - Ollama: http://localhost:11434
+# ==============================================================================
+
+services:
+  # Ollama LLM Service - AI-powered patch generation
+  ollama:
+    image: ollama/ollama:latest
+    container_name: security-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 8G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - security-network
+
+  # Security Automation Platform - Using LOCAL image
+  correlation-engine:
+    image: security-platform:local
+    container_name: security-correlation-engine-local
+    environment:
+      # LLM Configuration
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-deepseek-coder:6.7b-instruct}
+      
+      # Alternative LLM Providers (optional)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      
+      # Database
+      - DATABASE_URL=sqlite:///./data/security.db
+      
+      # GitHub Integration (for PR creation)
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      
+      # Notifications (optional)
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-}
+    
+    depends_on:
+      - ollama
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Mount test applications for scanning (using relative paths for Windows compatibility)
+      - ./test-app:/target-app
+      - ./test-workspace:/test-workspace
+      
+      # Data persistence (databases, scan results, patches)
+      - ./data:/app/data
+      
+      # CodeQL databases cache
+      - ./codeql-databases:/app/codeql-databases
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    networks:
+      - security-network
+
+volumes:
+  ollama_data:
+    name: security-ollama-models
+    driver: local
+
+networks:
+  security-network:
+    name: security-automation-network
+    driver: bridge
