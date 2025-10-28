@@ -1,0 +1,58 @@
+2025-10-27 23:57:56,135 - INFO - 
+======================================================================
+2025-10-27 23:57:56,135 - INFO - SECURITY AUTOMATION PLATFORM - COMPREHENSIVE TEST SUITE
+2025-10-27 23:57:56,135 - INFO - ======================================================================
+
+2025-10-27 23:57:56,135 - INFO - ======================================================================
+2025-10-27 23:57:56,135 - INFO - TEST 1: IAST Scanner
+2025-10-27 23:57:56,135 - INFO - ======================================================================
+2025-10-27 23:57:56,138 - ERROR - \u2717 IAST Scanner test failed: No module named 'app.services.iast_scanner'
+2025-10-27 23:57:56,140 - INFO - ======================================================================
+2025-10-27 23:57:56,140 - INFO - TEST 2: SonarQube Scanner
+2025-10-27 23:57:56,140 - INFO - ======================================================================
+2025-10-27 23:57:56,140 - ERROR - \u2717 SonarQube Scanner test failed: No module named 'app.services.sonarqube_scanner'
+2025-10-27 23:57:56,140 - INFO - ======================================================================
+2025-10-27 23:57:56,140 - INFO - TEST 3: Quadruple Correlator
+2025-10-27 23:57:56,140 - INFO - ======================================================================
+2025-10-27 23:57:56,140 - ERROR - \u2717 Quadruple Correlator test failed: No module named 'app.services.quadruple_correlator'
+Traceback (most recent call last):
+  File "C:\Users\srini\Documents\College\security-automation-platform\correlation-engine\test_platform_comprehensive.py", line 98, in test_quadruple_correlator
+    from app.services.quadruple_correlator import QuadrupleCorrelator
+ModuleNotFoundError: No module named 'app.services.quadruple_correlator'
+2025-10-27 23:57:56,145 - INFO - ======================================================================
+2025-10-27 23:57:56,145 - INFO - TEST 4: Existing Services Integration
+2025-10-27 23:57:56,145 - INFO - ======================================================================
+2025-10-27 23:57:56,145 - ERROR - \u2717 Existing services test failed: No module named 'app.services.continuous_monitor'
+Traceback (most recent call last):
+  File "C:\Users\srini\Documents\College\security-automation-platform\correlation-engine\test_platform_comprehensive.py", line 194, in test_existing_services
+    from app.services.continuous_monitor import ContinuousMonitor
+ModuleNotFoundError: No module named 'app.services.continuous_monitor'
+2025-10-27 23:57:56,145 - INFO - ======================================================================
+2025-10-27 23:57:56,145 - INFO - TEST 5: Docker Configuration
+2025-10-27 23:57:56,145 - INFO - ======================================================================
+2025-10-27 23:57:59,237 - INFO - \u2713 docker-compose.yml is valid
+2025-10-27 23:57:59,238 - ERROR - \u2717 Docker configuration test failed: 
+2025-10-27 23:57:59,238 - INFO - ======================================================================
+2025-10-27 23:57:59,238 - INFO - TEST 6: File Structure
+2025-10-27 23:57:59,238 - INFO - ======================================================================
+2025-10-27 23:57:59,238 - INFO - \u2713 README.md
+2025-10-27 23:57:59,238 - INFO - \u2713 docker-compose.yml
+2025-10-27 23:57:59,238 - INFO - \u2713 action.yml
+2025-10-27 23:57:59,238 - INFO - \u2713 correlation-engine/requirements.txt
+2025-10-27 23:57:59,239 - INFO - \u2713 correlation-engine/app/main.py
+2025-10-27 23:57:59,239 - ERROR - \u2717 Missing files: ['correlation-engine/app/services/iast_scanner.py', 'correlation-engine/app/services/sonarqube_scanner.py', 'correlation-engine/app/services/quadruple_correlator.py', 'correlation-engine/app/services/dast_scanner.py', 'correlation-engine/app/services/continuous_monitor.py', 'correlation-engine/app/services/exploit_generator.py', 'correlation-engine/app/services/false_positive_filter.py', 'correlation-engine/app/services/patch_test_generator.py']
+2025-10-27 23:57:59,239 - INFO - ======================================================================
+2025-10-27 23:57:59,239 - INFO - TEST SUMMARY
+2025-10-27 23:57:59,239 - INFO - ======================================================================
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: IAST Scanner
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: SonarQube Scanner
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: Quadruple Correlator
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: Existing Services
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: Docker Configuration
+2025-10-27 23:57:59,239 - INFO - \u2717 FAIL: File Structure
+2025-10-27 23:57:59,239 - INFO - ======================================================================
+2025-10-27 23:57:59,239 - INFO - TOTAL: 0/6 tests passed (0.0%)
+2025-10-27 23:57:59,239 - INFO - ======================================================================
+2025-10-27 23:57:59,239 - ERROR - 
+\u2717 6 tests failed - Please review errors above
+
