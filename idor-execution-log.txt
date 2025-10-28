@@ -1,0 +1,287 @@
+====================================================================================================
+🎯 IMPROVED IDOR VULNERABILITY PATCHING TEST
+====================================================================================================
+Date: 2025-10-28 13:02:53
+Goal: Fix ALL IDOR vulnerabilities with improved prompts
+====================================================================================================
+
+🔍 Testing 5 IDOR patterns with IMPROVED prompts
+
+====================================================================================================
+TEST 1/5: PHP User Profile IDOR
+====================================================================================================
+Language: PHP
+
+🔴 VULNERABLE CODE:
+--------------------------------------------------------------------------------
+<?php
+$user_id = $_GET['id'];
+$query = "SELECT * FROM users WHERE id = $user_id";
+$result = mysqli_query($conn, $query);
+$user = mysqli_fetch_assoc($result);
+echo $user['email'];
+?>
+--------------------------------------------------------------------------------
+
+🤖 Generating fix with improved prompt...
+✅ Generated in 52.9s
+
+🟢 FIXED CODE:
+--------------------------------------------------------------------------------
+<?php
+session_start();
+$requested_id = $_GET['id'];
+$current_user_id = $_SESSION['user_id'];
+
+if ($requested_id != $current_user_id) {
+    http_response_code(403);
+    die("Forbidden");
+}
+
+$query = "SELECT * FROM users WHERE id = ?";
+$stmt = mysqli_prepare($conn, $query);
+mysqli_stmt_bind_param($stmt, "i", $current_user_id);
+mysqli_stmt_execute($stmt);
+$result = mysqli_stmt_get_result($stmt);
+$user = mysqli_fetch_assoc($result);
+echo $user['email'];
+?>
+--------------------------------------------------------------------------------
+
+📊 SECURITY CHECKS:
+✅ Has Session: True
+✅ Auth Check: True
+✅ Returns 403: True
+✅ Checks User Id: True
+✅ Safe Query: True
+
+✅ FIX QUALITY: EXCELLENT (5/5 = 100%)
+
+====================================================================================================
+TEST 2/5: Node.js Document Access IDOR
+====================================================================================================
+Language: JavaScript
+
+🔴 VULNERABLE CODE:
+--------------------------------------------------------------------------------
+app.get('/api/documents/:id', async (req, res) => {
+    const docId = req.params.id;
+    const document = await Document.findById(docId);
+    res.json(document);
+});
+--------------------------------------------------------------------------------
+
+🤖 Generating fix with improved prompt...
+✅ Generated in 29.5s
+
+🟢 FIXED CODE:
+--------------------------------------------------------------------------------
+app.get('/api/documents/:id', async (req, res) => {
+    const docId = req.params.id;
+    const userId = req.session.userId; 
+    
+    const document = await Document.findOne({ _id: docId, ownerId: userId });
+    
+    if (!document) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    res.json(document);
+});
+--------------------------------------------------------------------------------
+
+📊 SECURITY CHECKS:
+✅ Has Session: True
+✅ Auth Check: !=
+✅ Returns 403: True
+✅ Checks User Id: True
+✅ Query Ownership: True
+
+✅ FIX QUALITY: EXCELLENT (5/5 = 100%)
+
+====================================================================================================
+TEST 3/5: Python Invoice IDOR
+====================================================================================================
+Language: Python
+
+🔴 VULNERABLE CODE:
+--------------------------------------------------------------------------------
+@app.route('/invoice/<invoice_id>')
+def view_invoice(invoice_id):
+    invoice = Invoice.query.get(invoice_id)
+    return jsonify(invoice.to_dict())
+--------------------------------------------------------------------------------
+
+🤖 Generating fix with improved prompt...
+✅ Generated in 25.6s
+
+🟢 FIXED CODE:
+--------------------------------------------------------------------------------
+@app.route('/invoice/<invoice_id>')
+@login_required
+def view_invoice(invoice_id):
+    invoice = Invoice.query.get(invoice_id)
+    
+    if invoice is None or invoice.user_id != current_user.id:
+        abort(403)
+        
+    return jsonify(invoice.to_dict())
+--------------------------------------------------------------------------------
+
+📊 SECURITY CHECKS:
+✅ Has Session: True
+✅ Auth Check: True
+✅ Returns 403: True
+✅ Checks User Id: True
+✅ Has Decorator: True
+
+✅ FIX QUALITY: EXCELLENT (5/5 = 100%)
+
+====================================================================================================
+TEST 4/5: PHP Order Access IDOR
+====================================================================================================
+Language: PHP
+
+🔴 VULNERABLE CODE:
+--------------------------------------------------------------------------------
+<?php
+$order_id = $_POST['order_id'];
+$stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ?");
+$stmt->execute([$order_id]);
+echo json_encode($stmt->fetch());
+?>
+--------------------------------------------------------------------------------
+
+🤖 Generating fix with improved prompt...
+✅ Generated in 33.7s
+
+🟢 FIXED CODE:
+--------------------------------------------------------------------------------
+<?php
+session_start();
+$order_id = $_POST['order_id'];
+$user_id = $_SESSION['user_id'];
+
+$stmt = $pdo->prepare("SELECT * FROM orders WHERE id = ? AND user_id = ?");
+$stmt->execute([$order_id, $user_id]);
+$order = $stmt->fetch();
+
+if (!$order) {
+    http_response_code(403);
+    die(json_encode(['error' => 'Forbidden']));
+}
+
+echo json<｜begin▁of▁sentence｜>encode($order);
+?>
+--------------------------------------------------------------------------------
+
+📊 SECURITY CHECKS:
+✅ Has Session: True
+✅ Auth Check: True
+✅ Returns 403: True
+✅ Checks User Id: True
+✅ Safe Query: True
+
+✅ FIX QUALITY: EXCELLENT (5/5 = 100%)
+
+====================================================================================================
+TEST 5/5: Node.js Settings Update IDOR
+====================================================================================================
+Language: JavaScript
+
+🔴 VULNERABLE CODE:
+--------------------------------------------------------------------------------
+router.post('/users/:userId/settings', async (req, res) => {
+    await User.updateOne(
+        { _id: req.params.userId },
+        { email: req.body.email }
+    );
+    res.json({ success: true });
+});
+--------------------------------------------------------------------------------
+
+🤖 Generating fix with improved prompt...
+✅ Generated in 33.6s
+
+🟢 FIXED CODE:
+--------------------------------------------------------------------------------
+router.post('/users/:userId/settings', async (req, res) => {
+    const requestedUserId = req.params.userId;
+    const currentUserId = req.session.userId;
+    
+    if (requestedUserId !== currentUserId) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    
+    await User.updateOne(
+        { _id: currentUserId },
+        { email: req.body.email }
+    );
+    res.json({ success: true });
+});
+--------------------------------------------------------------------------------
+
+📊 SECURITY CHECKS:
+✅ Has Session: True
+✅ Auth Check: True
+✅ Returns 403: True
+✅ Checks User Id: True
+❌ Query Ownership: False
+
+✅ FIX QUALITY: EXCELLENT (4/5 = 80%)
+
+
+====================================================================================================
+📊 IMPROVED IDOR TESTING - FINAL RESULTS
+====================================================================================================
+
+📈 SUMMARY:
+   Total Tested: 5
+   Fixed: 5 ✅
+   Partial: 0 ⚠️
+   Failed: 0 ❌
+   Success Rate: 100.0%
+
+📋 DETAILED RESULTS:
+----------------------------------------------------------------------------------------------------
+1. ✅ PHP User Profile IDOR
+   Status: FIXED
+   Quality: 100% (5/5 checks)
+   Time: 52.9s
+
+2. ✅ Node.js Document Access IDOR
+   Status: FIXED
+   Quality: 100% (5/5 checks)
+   Time: 29.5s
+
+3. ✅ Python Invoice IDOR
+   Status: FIXED
+   Quality: 100% (5/5 checks)
+   Time: 25.6s
+
+4. ✅ PHP Order Access IDOR
+   Status: FIXED
+   Quality: 100% (5/5 checks)
+   Time: 33.7s
+
+5. ✅ Node.js Settings Update IDOR
+   Status: FIXED
+   Quality: 80% (4/5 checks)
+   Time: 33.6s
+
+====================================================================================================
+🎉 IMPROVED IDOR TEST COMPLETE!
+====================================================================================================
+
+✅ Report: /tmp/idor_improved_report.json
+✅ Fixed: 5/5 vulnerabilities
+✅ Partial: 0/5 vulnerabilities
+✅ Overall Success: 100.0%
+
+🎉 EXCELLENT! Platform successfully handles IDOR vulnerabilities!
+
+💡 KEY FINDINGS:
+   • Tested across 3 languages
+   • Average generation time: 35.1s
+   • Using improved prompts with examples
+====================================================================================================
