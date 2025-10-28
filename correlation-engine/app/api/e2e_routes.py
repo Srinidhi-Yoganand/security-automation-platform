@@ -1742,21 +1742,145 @@ async def run_combined_scan(request: CombinedScanRequest):
         # STAGE 5: PATCH GENERATION (High-Confidence Only)
         # ==================================================================
         patches_generated = 0
+        patch_results = []
         
         if request.generate_patches and high_confidence_vulns:
             print(f"\n{'='*80}")
             print(f"STAGE 5: GENERATING PATCHES (High-Confidence Vulnerabilities Only)")
             print(f"{'='*80}")
             
-            from app.services.patcher.semantic_patch_generator import SemanticPatchGenerator
+            # Use LLM-based patch generator instead of template-based
+            from app.services.patcher.llm_patch_generator import LLMPatchGenerator, PatchContext
+            from pathlib import Path
             
-            patch_generator = SemanticPatchGenerator()
+            patch_generator = LLMPatchGenerator(llm_provider="auto")  # Auto-detect best LLM
+            patch_dir = Path("/app/data/patches")
+            patch_dir.mkdir(parents=True, exist_ok=True)
+            
+            print(f"   🤖 Using LLM Provider: {patch_generator.llm_provider}")
             
             for vuln in high_confidence_vulns[:10]:  # Limit to 10 patches for demo
-                print(f"🔧 Generating patch for {vuln['file']} - {vuln['type']}")
-                patches_generated += 1
+                try:
+                    print(f"🔧 Generating LLM-powered patch for {vuln['file']} - {vuln['type']}")
+                    
+                    # Read the vulnerable file
+                    vuln_file = Path(vuln['file'])
+                    if not vuln_file.exists():
+                        print(f"   ⚠️  File not found: {vuln['file']}")
+                        continue
+                    
+                    with open(vuln_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        vulnerable_code = f.read()
+                    
+                    # Extract specific vulnerable lines from findings
+                    line_number = 0
+                    vulnerable_snippet = vulnerable_code[:500]  # First 500 chars
+                    
+                    # Try to find line number from findings
+                    for finding_group in vuln.get('findings', []):
+                        if finding_group.get('mode') == 'SAST':
+                            data = finding_group.get('data', {})
+                            line_number = data.get('line', 0)
+                            vulnerable_snippet = data.get('code', vulnerable_snippet)
+                            break
+                    
+                    # Create patch context
+                    patch_context = PatchContext(
+                        vulnerability_type=vuln['type'],
+                        file_path=str(vuln_file),
+                        line_number=line_number,
+                        vulnerable_code=vulnerable_snippet,
+                        severity="high",
+                        confidence=vuln['detection_count'] / 3.0,  # Normalize to 0-1
+                        description=f"Confirmed by {', '.join(vuln['modes'])}",
+                        tool_name="combined_scan"
+                    )
+                    
+                    # Generate patch using LLM
+                    print(f"   🤖 Asking {patch_generator.llm_provider} to generate fix...")
+                    patch_result = patch_generator.generate_patch(patch_context)
+                    
+                    if patch_result and patch_result.fixed_code:
+                        # Save patch to file
+                        patch_filename = f"llm_patch_{vuln['type']}_{vuln_file.name}_{int(time.time())}.patch"
+                        patch_path = patch_dir / patch_filename
+                        
+                        # Create unified diff format patch
+                        patch_content = f"""========================================
+LLM-Generated Security Patch
+========================================
+File: {vuln['file']}
+Vulnerability: {vuln['type']}
+Detected by: {', '.join(vuln['modes'])}
+Detection Count: {vuln['detection_count']} mode(s)
+Priority: {vuln['priority']}
+LLM Provider: {patch_generator.llm_provider}
+Confidence: {patch_result.confidence}
+
+Explanation:
+{patch_result.explanation}
+
+========================================
+Original Code (Line {line_number}):
+========================================
+{patch_result.original_code}
+
+========================================
+Fixed Code:
+========================================
+{patch_result.fixed_code}
+
+========================================
+Diff:
+========================================
+{patch_result.diff}
+
+========================================
+Additional Info:
+========================================
+Manual Review Needed: {patch_result.manual_review_needed}
+Breaking Changes: {', '.join(patch_result.breaking_changes or ['None'])}
+Prerequisites: {', '.join(patch_result.prerequisites or ['None'])}
+
+"""
+                        
+                        with open(patch_path, 'w', encoding='utf-8') as f:
+                            f.write(patch_content)
+                        
+                        print(f"   ✅ LLM Patch saved: {patch_filename}")
+                        print(f"   📝 Confidence: {patch_result.confidence}")
+                        patches_generated += 1
+                        
+                        patch_results.append({
+                            "file": vuln['file'],
+                            "type": vuln['type'],
+                            "patch_file": str(patch_path),
+                            "success": True,
+                            "llm_provider": patch_generator.llm_provider,
+                            "confidence": patch_result.confidence,
+                            "explanation": patch_result.explanation[:200]
+                        })
+                    else:
+                        print(f"   ⚠️  LLM patch generation returned no fix")
+                        patch_results.append({
+                            "file": vuln['file'],
+                            "type": vuln['type'],
+                            "success": False,
+                            "error": "No fix generated by LLM"
+                        })
+                        
+                except Exception as e:
+                    print(f"   ❌ Error generating LLM patch: {str(e)[:100]}")
+                    import traceback
+                    print(f"      {traceback.format_exc()[:300]}")
+                    patch_results.append({
+                        "file": vuln['file'],
+                        "type": vuln['type'],
+                        "success": False,
+                        "error": str(e)
+                    })
             
-            print(f"✅ Generated {patches_generated} patches for high-confidence vulnerabilities")
+            print(f"✅ Generated {patches_generated} LLM-powered patches for high-confidence vulnerabilities")
         
         # ==================================================================
         # STAGE 6: SUMMARY & RESULTS
@@ -1804,6 +1928,7 @@ async def run_combined_scan(request: CombinedScanRequest):
                 "summary": summary,
                 "high_confidence_vulnerabilities": high_confidence_vulns,
                 "all_correlated_findings": correlated_vulns,
+                "patch_results": patch_results if patch_results else [],
                 "raw_findings": {
                     "sast": all_findings["sast"][:10],  # Sample
                     "dast": all_findings["dast"][:10],  # Sample
