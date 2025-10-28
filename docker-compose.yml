@@ -26,6 +26,8 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
+    networks:
+      - security-network
     deploy:
       resources:
         limits:

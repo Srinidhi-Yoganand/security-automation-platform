@@ -96,20 +96,46 @@ class DASTScanner:
         logger.info(f"🔍 Starting active scan on {target_url}")
         
         try:
+            # First, access the URL through ZAP proxy to ensure it's in the sites tree
+            logger.info(f"📍 Accessing {target_url} to register with ZAP...")
+            try:
+                self.zap.urlopen(target_url)
+                time.sleep(2)  # Give ZAP time to process
+            except Exception as e:
+                logger.warning(f"⚠️  Could not access URL directly: {e}")
+            
             # Configure scan policy if provided
             if scan_policy:
                 self.zap.ascan.set_option_scan_policy(scan_policy)
             
             # Start active scan
+            logger.info(f"🚀 Launching active scan...")
             scan_id = self.zap.ascan.scan(target_url)
             
-            # Wait for scan to complete
-            while int(self.zap.ascan.status(scan_id)) < 100:
-                progress = int(self.zap.ascan.status(scan_id))
-                logger.info(f"Active scan progress: {progress}%")
-                time.sleep(5)
+            # Check if scan_id is valid
+            if not scan_id or scan_id == 'does_not_exist':
+                logger.error(f"❌ Invalid scan ID: {scan_id}")
+                return {"error": f"Failed to start scan - invalid scan ID: {scan_id}"}
             
-            logger.info("✅ Active scan completed!")
+            logger.info(f"✅ Active scan started with ID: {scan_id}")
+            
+            # Wait for scan to complete
+            max_wait = 300  # 5 minutes max
+            start_time = time.time()
+            while time.time() - start_time < max_wait:
+                try:
+                    status = self.zap.ascan.status(scan_id)
+                    progress = int(status) if status.isdigit() else 0
+                    
+                    if progress >= 100:
+                        logger.info("✅ Active scan completed!")
+                        break
+                        
+                    logger.info(f"Active scan progress: {progress}%")
+                    time.sleep(5)
+                except Exception as e:
+                    logger.warning(f"⚠️  Error checking scan status: {e}")
+                    break
             
             return {
                 "scan_id": scan_id,
