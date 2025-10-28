@@ -1,10 +1,10 @@
-name: 'Security Automation Platform'
-description: 'Quadruple Hybrid Security Analysis (SAST+DAST+IAST+Symbolic) with AI-powered automated patching'
-author: 'Your Organization'
+name: 'AI-Powered Security Automation'
+description: 'Enterprise security platform with hybrid analysis and AI-powered automated patching'
+author: 'Srinidhi-Yoganand'
 
 branding:
   icon: 'shield'
-  color: 'red'
+  color: 'blue'
 
 inputs:
   target_path:
