@@ -38,6 +38,7 @@ diff-match-patch==20230430
 # Thesis enhancement: Semantic analysis & Symbolic execution
 z3-solver==4.12.2.0  # Constraint solver for symbolic execution
 py4j==0.10.9.7       # For JOERN integration (optional)
+python-owasp-zap-v2.4==0.0.21  # OWASP ZAP integration for DAST
 
 # Testing
 pytest==7.4.3
