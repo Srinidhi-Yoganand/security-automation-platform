@@ -86,6 +86,12 @@ async def health_check():
     return {"status": "healthy", "version": __version__}
 
 
+@app.get("/api/v1/status")
+async def status_check():
+    """Status check endpoint (alias for /health)"""
+    return {"status": "healthy", "version": __version__}
+
+
 @app.get("/api/llm/status")
 async def llm_status():
     """Check LLM provider status"""

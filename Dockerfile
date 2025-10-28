@@ -2,18 +2,16 @@
 # Provides zero-dependency deployment with CodeQL, Z3, and LLM patching
 
 # ============================================
-# Stage 1: CodeQL Base
+# Stage 1: CodeQL Base (lightweight)
 # ============================================
-FROM ubuntu:22.04 AS codeql-base
+FROM debian:bullseye-slim AS codeql-base
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install only essential tools for downloading CodeQL
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     unzip \
     git \
-    curl \
-    openjdk-11-jdk \
-    maven \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install CodeQL CLI
@@ -67,40 +65,33 @@ RUN pip install --no-cache-dir google-generativeai openai ollama || true
 
 
 # ============================================
-# Stage 3: Final Production Image
+# Stage 3: Final Production Image (slim Python)
 # ============================================
-FROM ubuntu:22.04
+FROM python:3.11-slim AS final
 
 LABEL maintainer="Security Automation Platform"
 LABEL description="AI-powered security analysis and automated patching platform"
 LABEL version="1.0.0"
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3.11-venv \
-    openjdk-11-jdk \
+# Install runtime system packages required for Java/CodeQL tooling
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jdk \
     maven \
     git \
     curl \
     unzip \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy CodeQL from builder stage
 COPY --from=codeql-base /opt/codeql /opt/codeql
 COPY --from=codeql-base /opt/codeql-repo /opt/codeql-repo
 
-# Copy Python virtual environment from builder stage
-COPY --from=python-builder /opt/venv /opt/venv
-
-# Set up environment
-ENV CODEQL_HOME=/opt/codeql
-ENV PATH="/opt/venv/bin:${CODEQL_HOME}:${PATH}"
-ENV PYTHONPATH="/app:${PYTHONPATH}"
-ENV CODEQL_QUERIES=/opt/codeql-repo
-
-# Create app directory
+# Use system Python (python:3.11-slim). Install Python deps from requirements
 WORKDIR /app
+COPY correlation-engine/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r /tmp/requirements.txt || true
 
 # Copy application code
 COPY correlation-engine/ /app/
@@ -109,12 +100,18 @@ COPY correlation-engine/ /app/
 RUN mkdir -p /data/codeql-databases /data/results /data/patches && \
     chmod -R 777 /data
 
+# Set up environment
+ENV CODEQL_HOME=/opt/codeql
+ENV PATH="/usr/local/bin:${CODEQL_HOME}:${PATH}"
+ENV PYTHONPATH="/app"
+ENV CODEQL_QUERIES=/opt/codeql-repo
+
 # Expose API port
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/status || exit 1
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command: Run FastAPI server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

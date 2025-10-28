@@ -1,0 +1,94 @@
+version: '3.8'
+
+# ==============================================================================
+# SECURITY AUTOMATION PLATFORM - Local Development Build
+# ==============================================================================
+# Builds from local source code instead of Docker Hub
+#
+# Quick Start:
+#   1. docker compose -f docker-compose.local.yml build
+#   2. docker compose -f docker-compose.local.yml up -d
+#   3. Access dashboard: http://localhost:8000/api/v1/e2e/dashboard
+#
+# This is faster for testing and doesn't require Docker Hub
+# ==============================================================================
+
+services:
+  # Security Automation Platform - Built from local source
+  correlation-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: security-correlation-engine-local
+    environment:
+      # LLM Configuration (optional for basic testing)
+      - LLM_PROVIDER=${LLM_PROVIDER:-template}
+      
+      # Database
+      - DATABASE_URL=sqlite:///./data/security.db
+      
+      # GitHub Integration (optional)
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+    
+    ports:
+      - "8000:8000"
+    
+    volumes:
+      # Mount test applications
+      - ./test-app:/target-app:ro
+      - ./test-workspace:/test-workspace:ro
+      
+      # Data persistence
+      - ./data:/app/data
+      
+      # CodeQL databases cache
+      - ./codeql-databases:/app/codeql-databases
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    networks:
+      - security-network
+
+  # SonarQube (optional - for comprehensive scanning)
+  sonarqube:
+    image: sonarqube:community
+    container_name: security-sonarqube-local
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - security-network
+    restart: unless-stopped
+
+  # ZAP (optional - for DAST scanning)
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: security-zap-local
+    ports:
+      - "8080:8080"
+    command: zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true
+    networks:
+      - security-network
+    restart: unless-stopped
+
+networks:
+  security-network:
+    driver: bridge
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
