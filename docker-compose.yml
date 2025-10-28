@@ -43,7 +43,10 @@ services:
 
   # Security Automation Platform - Main Service
   correlation-engine:
-    image: srinidhiyoganand/security-automation-platform:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: security-automation-platform:local
     container_name: security-correlation-engine
     environment:
       # LLM Configuration
@@ -90,14 +93,17 @@ services:
         condition: service_healthy
       zap:
         condition: service_healthy
-      sonarqube:
-        condition: service_healthy
+      # sonarqube:
+      #   condition: service_healthy
     
     ports:
       - "8000:8000"
     
     volumes:
-      # Mount YOUR application for scanning
+      # Mount DVWA source code from shared volume for SAST scanning
+      - dvwa-source:/tmp/DVWA:ro
+      
+      # Mount YOUR application for scanning (optional)
       - ${TARGET_APP_PATH:-.}:/target-app:ro
       
       # Data persistence (databases, scan results, patches)
@@ -135,33 +141,73 @@ services:
       retries: 3
       start_period: 30s
 
-  # SonarQube - Code Quality and Security Analysis
-  sonarqube:
-    image: sonarqube:10-community
-    container_name: security-sonarqube
+  # SonarQube - Code Quality and Security Analysis (OPTIONAL - Memory Intensive)
+  # Uncomment if you have 12+ GB RAM available
+  # sonarqube:
+  #   image: sonarqube:10-community
+  #   container_name: security-sonarqube
+  #   environment:
+  #     - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+  #   ports:
+  #     - "9000:9000"
+  #   volumes:
+  #     - sonarqube_data:/opt/sonarqube/data
+  #     - sonarqube_extensions:/opt/sonarqube/extensions
+  #     - sonarqube_logs:/opt/sonarqube/logs
+  #   restart: unless-stopped
+  #   networks:
+  #     - security-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 120s
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 4G
+  #       reservations:
+  #         memory: 2G
+
+  # ============================================
+  # DVWA - Vulnerable Application for Testing
+  # ============================================
+  dvwa-db:
+    image: mariadb:10
+    container_name: dvwa-db
     environment:
-      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
-    ports:
-      - "9000:9000"
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_logs:/opt/sonarqube/logs
-    restart: unless-stopped
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
     networks:
       - security-network
+    restart: unless-stopped
+  
+  dvwa-app:
+    build:
+      context: ./vulnerable-apps/DVWA
+      dockerfile: Dockerfile
+    container_name: dvwa-app
+    depends_on:
+      - dvwa-db
+    environment:
+      - DB_SERVER=dvwa-db
+    ports:
+      - "8888:80"
+    volumes:
+      # Share DVWA source code with correlation engine for SAST scanning
+      - dvwa-source:/var/www/html
+    networks:
+      - security-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 120s
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
+      retries: 3
+      start_period: 60s
 
 volumes:
   ollama_data:
@@ -174,6 +220,10 @@ volumes:
   
   codeql_data:
     name: security-codeql-cache
+    driver: local
+  
+  dvwa-source:
+    name: security-dvwa-source
     driver: local
   
   sonarqube_data:
