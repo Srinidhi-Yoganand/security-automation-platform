@@ -72,12 +72,16 @@ services:
       - SONARQUBE_HOST=http://sonarqube:9000
       - SONARQUBE_TOKEN=${SONARQUBE_TOKEN:-squ_default_token}
       
-      # IAST Configuration
-      - IAST_PROVIDER=${IAST_PROVIDER:-custom}
-      - IAST_AGENT_HOST=${IAST_AGENT_HOST:-http://localhost:8888}
-      - CONTRAST_API_KEY=${CONTRAST_API_KEY:-}
-      - CONTRAST_API_SERVICE_KEY=${CONTRAST_API_SERVICE_KEY:-}
-      - CONTRAST_API_URL=${CONTRAST_API_URL:-https://app.contrastsecurity.com/api}
+      # CPG Analysis Configuration (replaces IAST)
+      - CPG_ENABLED=true
+      - JOERN_HOME=/opt/joern
+      - CODEQL_HOME=/opt/codeql
+      
+      # Target Application (set by override files)
+      - TARGET_APP_NAME=${TARGET_APP_NAME:-}
+      - TARGET_APP_URL=${TARGET_APP_URL:-}
+      - TARGET_APP_LANGUAGE=${TARGET_APP_LANGUAGE:-}
+      - TARGET_APP_SOURCE=${TARGET_APP_SOURCE:-/target-app}
       
       # Notifications (optional)
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
@@ -100,12 +104,8 @@ services:
       - "8000:8000"
     
     volumes:
-      # Mount DVWA source code from shared volume for SAST scanning
-      # Note: Made writable for patch demo - in production use read-only
-      - dvwa-source:/tmp/DVWA
-      
-      # Mount YOUR application for scanning (optional)
-      - ${TARGET_APP_PATH:-.}:/target-app:ro
+      # Target application source (mounted by override files)
+      # Use docker-compose.custom-app.yml or docker-compose.dvwa.yml
       
       # Data persistence (databases, scan results, patches)
       - correlation_data:/app/data
@@ -175,43 +175,16 @@ services:
   #         memory: 2G
 
   # ============================================
-  # DVWA - Vulnerable Application for Testing
+  # TARGET APPLICATION
   # ============================================
-  dvwa-db:
-    image: mariadb:10
-    container_name: dvwa-db
-    environment:
-      - MYSQL_ROOT_PASSWORD=dvwa
-      - MYSQL_DATABASE=dvwa
-      - MYSQL_USER=dvwa
-      - MYSQL_PASSWORD=p@ssw0rd
-    networks:
-      - security-network
-    restart: unless-stopped
-  
-  dvwa-app:
-    build:
-      context: ./vulnerable-apps/DVWA
-      dockerfile: Dockerfile
-    container_name: dvwa-app
-    depends_on:
-      - dvwa-db
-    environment:
-      - DB_SERVER=dvwa-db
-    ports:
-      - "8888:80"
-    volumes:
-      # Share DVWA source code with correlation engine for SAST scanning
-      - dvwa-source:/var/www/html
-    networks:
-      - security-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+  # Target application is defined in override files:
+  # - docker-compose.custom-app.yml (custom vulnerable app)
+  # - docker-compose.dvwa.yml (DVWA)
+  # - Create your own docker-compose.myapp.yml
+  #
+  # Usage:
+  #   docker-compose -f docker-compose.yml -f docker-compose.custom-app.yml up
+  #   docker-compose -f docker-compose.yml -f docker-compose.dvwa.yml up
 
 volumes:
   ollama_data:
@@ -224,10 +197,6 @@ volumes:
   
   codeql_data:
     name: security-codeql-cache
-    driver: local
-  
-  dvwa-source:
-    name: security-dvwa-source
     driver: local
   
   sonarqube_data:

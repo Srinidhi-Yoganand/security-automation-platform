@@ -1,0 +1,58 @@
+# Docker Compose Override for Custom Vulnerable Application
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.custom-app.yml up
+
+version: '3.8'
+
+services:
+  # Custom Vulnerable Application
+  custom-app:
+    build:
+      context: ./vulnerable-apps/custom-vulnerable-app
+      dockerfile: Dockerfile
+    container_name: custom-vulnerable-app
+    environment:
+      # Application Configuration (standardized interface)
+      - APP_NAME=custom-vulnerable-app
+      - APP_LANGUAGE=python
+      - APP_FRAMEWORK=flask
+      - SOURCE_PATH=/app
+      - SOURCE_ENCODING=utf-8
+      - WEB_PORT=8888
+      - WEB_PROTOCOL=http
+      - HEALTH_CHECK_PATH=/health
+      - HEALTH_CHECK_TIMEOUT=30
+    ports:
+      - "8888:8888"
+    volumes:
+      # Share source code with correlation engine for SAST/CPG scanning
+      - ./vulnerable-apps/custom-vulnerable-app:/target-app:ro
+    networks:
+      - security-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Update correlation engine to scan custom app
+  correlation-engine:
+    environment:
+      # Target Application Configuration
+      - TARGET_APP_NAME=custom-vulnerable-app
+      - TARGET_APP_URL=http://custom-app:8888
+      - TARGET_APP_LANGUAGE=python
+      - TARGET_APP_SOURCE=/target-app
+      - TARGET_APP_FRAMEWORK=flask
+    volumes:
+      # Mount custom app source for scanning
+      - ./vulnerable-apps/custom-vulnerable-app:/target-app:ro
+    depends_on:
+      custom-app:
+        condition: service_healthy
+
+networks:
+  security-network:
+    name: security-automation-network
+    driver: bridge

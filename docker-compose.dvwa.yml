@@ -1,0 +1,96 @@
+# Docker Compose Override for DVWA Testing
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dvwa.yml up
+
+version: '3.8'
+
+services:
+  # DVWA Database
+  dvwa-db:
+    image: mariadb:10
+    container_name: dvwa-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=dvwa
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=p@ssw0rd
+    networks:
+      - security-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pdvwa"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  # DVWA Application
+  dvwa-app:
+    build:
+      context: ./vulnerable-apps/DVWA
+      dockerfile: Dockerfile
+    container_name: dvwa-app
+    depends_on:
+      dvwa-db:
+        condition: service_healthy
+    environment:
+      # Database Configuration
+      - DB_SERVER=dvwa-db
+      - DB_USER=dvwa
+      - DB_PASSWORD=p@ssw0rd
+      - DB_DATABASE=dvwa
+      
+      # Application Configuration (standardized interface)
+      - APP_NAME=dvwa
+      - APP_LANGUAGE=php
+      - APP_FRAMEWORK=none
+      - SOURCE_PATH=/var/www/html
+      - SOURCE_ENCODING=utf-8
+      - WEB_PORT=80
+      - WEB_PROTOCOL=http
+      - HEALTH_CHECK_PATH=/
+      - HEALTH_CHECK_TIMEOUT=30
+    ports:
+      - "8888:80"
+    volumes:
+      # Share DVWA source code with correlation engine for SAST/CPG scanning
+      - dvwa-source:/var/www/html
+      - dvwa-source:/target-app:ro  # Also mount as /target-app for consistency
+    networks:
+      - security-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Update correlation engine to scan DVWA
+  correlation-engine:
+    environment:
+      # Target Application Configuration
+      - TARGET_APP_NAME=dvwa
+      - TARGET_APP_URL=http://dvwa-app
+      - TARGET_APP_LANGUAGE=php
+      - TARGET_APP_SOURCE=/target-app
+      - TARGET_APP_FRAMEWORK=none
+      
+      # DVWA-specific credentials for DAST scanning
+      - DVWA_USERNAME=admin
+      - DVWA_PASSWORD=password
+      - DVWA_SECURITY_LEVEL=low
+    volumes:
+      # Mount DVWA source for scanning
+      - dvwa-source:/target-app:ro
+    depends_on:
+      dvwa-app:
+        condition: service_healthy
+
+volumes:
+  dvwa-source:
+    name: security-dvwa-source
+    driver: local
+
+networks:
+  security-network:
+    name: security-automation-network
+    driver: bridge
