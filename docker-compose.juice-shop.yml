@@ -1,0 +1,31 @@
+# Docker Compose Override for Juice Shop Testing
+version: '3.8'
+
+services:
+  # Mount Juice Shop source into correlation engine for scanning
+  correlation-engine:
+    volumes:
+      - ./vulnerable-apps/juice-shop:/juice-shop:ro
+    environment:
+      - TARGET_APP_NAME=juice-shop
+      - TARGET_APP_URL=http://juice-shop:3000
+      - TARGET_APP_LANGUAGE=typescript
+      - TARGET_APP_SOURCE=/juice-shop
+
+  juice-shop:
+    image: bkimminich/juice-shop
+    container_name: juice-shop-app
+    ports:
+      - "3000:3000"
+    networks:
+      - security-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  security-network:
+    external: true

@@ -221,13 +221,16 @@ class SemanticContextBuilder:
             with open(full_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
-            start = max(0, line_number - context_lines - 1)
-            end = min(len(lines), line_number + context_lines)
+            # Ensure line_number is an integer
+            line_num = int(line_number) if isinstance(line_number, str) else line_number
+            
+            start = max(0, line_num - context_lines - 1)
+            end = min(len(lines), line_num + context_lines)
             
             # Add line numbers for context
             context_lines_with_numbers = []
             for i in range(start, end):
-                prefix = ">>> " if i == line_number - 1 else "    "
+                prefix = ">>> " if i == line_num - 1 else "    "
                 context_lines_with_numbers.append(f"{prefix}{i+1:4d} | {lines[i]}")
             
             return ''.join(context_lines_with_numbers)
