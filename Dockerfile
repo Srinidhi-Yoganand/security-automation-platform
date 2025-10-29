@@ -93,7 +93,8 @@ COPY correlation-engine/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /tmp/requirements.txt || true
 
-# Copy application code
+# Copy application code (use build arg to bust cache when needed)
+ARG CACHEBUST=1
 COPY correlation-engine/ /app/
 
 # Create directories for data persistence

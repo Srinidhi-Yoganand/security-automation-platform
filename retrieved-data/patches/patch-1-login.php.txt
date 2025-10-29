@@ -1,0 +1,51 @@
+Vulnerability: {'type': 'IDOR', 'file': '/tmp/target-app/DVWA/login.php', 'line': 77}
+
+Original (truncated):
+<?php
+
+define( 'DVWA_WEB_PAGE_TO_ROOT', '' );
+require_once DVWA_WEB_PAGE_TO_ROOT . 'dvwa/includes/dvwaPage.inc.php';
+
+dvwaPageStartup( array( ) );
+
+dvwaDatabaseConnect();
+
+if( isset( $_POST[ 'Login' ] ) ) {
+	// Anti-CSRF
+	if (array_key_exists ("session_token", $_SESSION)) {
+		$session_token = $_SESSION[ 'session_token' ];
+	} else {
+		$session_token = "";
+	}
+
+	checkToken( $_REQUEST[ 'user_token' ], $session_token, 'login.php' );
+
+	$user = $_POST[ 'username' ];
+	$user = stripslashes( $user );
+	$us...
+
+Patched (truncated):
+// SECURITY FIX REQUIRED for IDOR
+// Root cause: Security validation missing
+
+<?php
+
+define( 'DVWA_WEB_PAGE_TO_ROOT', '' );
+require_once DVWA_WEB_PAGE_TO_ROOT . 'dvwa/includes/dvwaPage.inc.php';
+
+dvwaPageStartup( array( ) );
+
+dvwaDatabaseConnect();
+
+if( isset( $_POST[ 'Login' ] ) ) {
+	// Anti-CSRF
+	if (array_key_exists ("session_token", $_SESSION)) {
+		$session_token = $_SESSION[ 'session_token' ];
+	} else {
+		$session_token = "";
+	}
+
+	checkToken( $_REQUEST[ 'user_token' ], $session_token, 'logi...
+
+Explanation:
+Generic security annotation added. Manual review required for IDOR.

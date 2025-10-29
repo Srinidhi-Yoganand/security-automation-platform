@@ -89,8 +89,8 @@ services:
       - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-}
     
     depends_on:
-      ollama:
-        condition: service_healthy
+      # ollama:
+      #   condition: service_healthy
       zap:
         condition: service_healthy
       # sonarqube:
@@ -101,7 +101,8 @@ services:
     
     volumes:
       # Mount DVWA source code from shared volume for SAST scanning
-      - dvwa-source:/tmp/DVWA:ro
+      # Note: Made writable for patch demo - in production use read-only
+      - dvwa-source:/tmp/DVWA
       
       # Mount YOUR application for scanning (optional)
       - ${TARGET_APP_PATH:-.}:/target-app:ro
@@ -111,6 +112,9 @@ services:
       
       # CodeQL databases cache
       - codeql_data:/app/codeql-databases
+      
+      # Mount source code for development (hot reload)
+      - ./correlation-engine/app:/app/app:ro
     
     restart: unless-stopped
     

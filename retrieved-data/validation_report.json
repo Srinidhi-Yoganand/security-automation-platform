@@ -1,0 +1,46 @@
+{
+  "source_path": "/tmp/target-app/DVWA",
+  "vulnerabilities_found": 525,
+  "vulnerabilities_fixed": 0,
+  "patches": [
+    {
+      "file": "/app/data/patches/patch-1-login.php.txt",
+      "vulnerability": {
+        "type": "IDOR",
+        "file": "/tmp/target-app/DVWA/login.php",
+        "line": 77
+      },
+      "validation": {
+        "is_valid": false,
+        "vulnerability_fixed": false,
+        "score": null
+      }
+    },
+    {
+      "file": "/app/data/patches/patch-2-login.php.txt",
+      "vulnerability": {
+        "type": "IDOR",
+        "file": "/tmp/target-app/DVWA/login.php",
+        "line": 79
+      },
+      "validation": {
+        "is_valid": false,
+        "vulnerability_fixed": false,
+        "score": null
+      }
+    },
+    {
+      "file": "/app/data/patches/patch-3-login.php.txt",
+      "vulnerability": {
+        "type": "IDOR",
+        "file": "/tmp/target-app/DVWA/login.php",
+        "line": 87
+      },
+      "validation": {
+        "is_valid": false,
+        "vulnerability_fixed": false,
+        "score": null
+      }
+    }
+  ]
+}

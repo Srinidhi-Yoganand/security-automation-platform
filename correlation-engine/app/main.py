@@ -18,6 +18,14 @@ from app.api.semantic_routes import router as semantic_router
 # Import end-to-end pipeline router
 from app.api.e2e_routes import router as e2e_router
 
+
+# Pydantic models for API requests
+class ApplyPatchRequest(BaseModel):
+    """Request model for applying a patch directly to a file"""
+    file_path: str
+    patch_content: str
+    backup: bool = True
+
 # Application metadata
 __version__ = "0.2.0"
 __title__ = "Security Correlation Engine"
@@ -580,6 +588,129 @@ async def test_patch_in_branch(vuln_id: int, repo_path: str = "../vulnerable-app
             "test_results": patch.test_results,
             "status": patch.status.value
         }
+
+
+@app.get("/api/v1/patches/list")
+async def list_patches():
+    """
+    List all generated patches in the data/patches directory
+    
+    Returns list of patch files with metadata
+    """
+    from pathlib import Path
+    import os
+    from datetime import datetime
+    
+    try:
+        patches_dir = Path("/app/data/patches")
+        
+        if not patches_dir.exists():
+            return {
+                "success": True,
+                "total_patches": 0,
+                "patches": [],
+                "message": "No patches directory found"
+            }
+        
+        patch_files = []
+        for patch_file in sorted(patches_dir.glob("*.patch")) + sorted(patches_dir.glob("*.txt")):
+            stat = patch_file.stat()
+            patch_files.append({
+                "filename": patch_file.name,
+                "size": stat.st_size,
+                "size_human": f"{stat.st_size / 1024:.1f} KB",
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "path": str(patch_file)
+            })
+        
+        return {
+            "success": True,
+            "total_patches": len(patch_files),
+            "patches": patch_files,
+            "patches_directory": str(patches_dir)
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list patches: {str(e)}")
+
+
+@app.get("/api/v1/patches/view/{filename}")
+async def view_patch(filename: str):
+    """
+    View the content of a specific patch file
+    
+    Args:
+        filename: Name of the patch file to view
+    """
+    from pathlib import Path
+    
+    try:
+        patches_dir = Path("/app/data/patches")
+        patch_file = patches_dir / filename
+        
+        # Security check - prevent directory traversal
+        if not str(patch_file.resolve()).startswith(str(patches_dir.resolve())):
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        if not patch_file.exists():
+            raise HTTPException(status_code=404, detail=f"Patch file not found: {filename}")
+        
+        content = patch_file.read_text(encoding='utf-8')
+        
+        return {
+            "success": True,
+            "filename": filename,
+            "content": content,
+            "size": patch_file.stat().st_size
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read patch: {str(e)}")
+
+
+@app.post("/api/v1/patches/apply-direct")
+async def apply_patch_direct(request: ApplyPatchRequest):
+    """
+    Apply a patch directly to a file (simplified for demo)
+    
+    Args:
+        request: Patch application request with file_path, patch_content, and backup flag
+    """
+    from pathlib import Path
+    import shutil
+    from datetime import datetime
+    
+    try:
+        target_file = Path(request.file_path)
+        
+        if not target_file.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+        
+        # Create backup if requested
+        backup_path = None
+        if request.backup:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = target_file.parent / f"{target_file.stem}_backup_{timestamp}{target_file.suffix}"
+            shutil.copy2(target_file, backup_path)
+        
+        # Apply the patch
+        target_file.write_text(request.patch_content, encoding='utf-8')
+        
+        return {
+            "success": True,
+            "message": "Patch applied successfully",
+            "file_path": str(target_file),
+            "backup_created": request.backup,
+            "backup_path": str(backup_path) if backup_path else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to apply patch: {str(e)}")
+
 
 
 @app.post("/api/v1/patches/apply")

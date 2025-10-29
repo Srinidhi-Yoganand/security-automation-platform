@@ -1,0 +1,301 @@
+{
+	"info": {
+		"_postman_id": "security-platform-demo",
+		"name": "Security Platform - Complete Demo",
+		"description": "End-to-end demo for security automation platform with SAST, DAST, IAST, correlation, and AI patching",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1 - Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/health",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"health"
+					]
+				},
+				"description": "Verify that all services are running and healthy"
+			},
+			"response": []
+		},
+		{
+			"name": "2 - Full Security Scan (SAST + DAST + IAST)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"// Save response for later use",
+							"pm.environment.set(\"scan_response\", pm.response.text());",
+							"",
+							"// Optionally extract first patch for demonstration",
+							"if (pm.response.json().results && pm.response.json().results.patch_results) {",
+							"    const patches = pm.response.json().results.patch_results;",
+							"    if (patches.length > 0) {",
+							"        pm.environment.set(\"first_patch_content\", patches[0].patched_code);",
+							"        pm.environment.set(\"first_patch_file\", patches[0].file_path || \"/tmp/DVWA/vulnerabilities/sqli/source/low.php\");",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source_path\": \"/tmp/DVWA\",\n  \"target_url\": \"http://dvwa-app\",\n  \"max_vulnerabilities\": 10,\n  \"enable_sast\": true,\n  \"enable_dast\": true,\n  \"enable_iast\": true,\n  \"generate_patches\": true\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/e2e/combined-scan",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"e2e",
+						"combined-scan"
+					]
+				},
+				"description": "Run complete security scan with SAST (static analysis), DAST (OWASP ZAP dynamic testing), and IAST (interactive runtime exploitation). This takes 3-5 minutes."
+			},
+			"response": []
+		},
+		{
+			"name": "3 - List Generated Patches",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/patches/list",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"patches",
+						"list"
+					]
+				},
+				"description": "List all AI-generated patches stored in the system"
+			},
+			"response": []
+		},
+		{
+			"name": "3b - View Specific Patch Content",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/patches/view/llm_patch_SQL_INJECTION_impossible.php_1761726766.patch",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"patches",
+						"view",
+						"llm_patch_SQL_INJECTION_impossible.php_1761726766.patch"
+					]
+				},
+				"description": "View the content of a specific patch file. Replace the filename with one from the list endpoint."
+			},
+			"response": []
+		},
+		{
+			"name": "4 - Run SAST Only",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source_path\": \"/tmp/DVWA\",\n  \"target_url\": \"http://dvwa-app\",\n  \"enable_sast\": true,\n  \"enable_dast\": false,\n  \"enable_iast\": false,\n  \"generate_patches\": false\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/e2e/combined-scan",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"e2e",
+						"combined-scan"
+					]
+				},
+				"description": "Run only SAST (Static Analysis) - very fast (2-5 seconds)"
+			},
+			"response": []
+		},
+		{
+			"name": "5 - Run DAST Only",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source_path\": \"/tmp/DVWA\",\n  \"target_url\": \"http://dvwa-app\",\n  \"enable_sast\": false,\n  \"enable_dast\": true,\n  \"enable_iast\": false,\n  \"generate_patches\": false\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/e2e/combined-scan",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"e2e",
+						"combined-scan"
+					]
+				},
+				"description": "Run only DAST (Dynamic Analysis with OWASP ZAP) - takes 2-3 minutes"
+			},
+			"response": []
+		},
+		{
+			"name": "6 - Run IAST Only",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"source_path\": \"/tmp/DVWA\",\n  \"target_url\": \"http://dvwa-app\",\n  \"enable_sast\": false,\n  \"enable_dast\": false,\n  \"enable_iast\": true,\n  \"generate_patches\": false\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/e2e/combined-scan",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"e2e",
+						"combined-scan"
+					]
+				},
+				"description": "Run only IAST (Interactive Application Security Testing) - runtime exploitation testing - takes 8-10 seconds"
+			},
+			"response": []
+		},
+		{
+			"name": "7 - View Dashboard",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8000/api/v1/e2e/dashboard",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"e2e",
+						"dashboard"
+					]
+				},
+				"description": "Open the interactive HTML dashboard with charts and metrics (opens in browser)"
+			},
+			"response": []
+		},
+		{
+			"name": "8 - DVWA Login Page (Test App)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8888/login.php",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8888",
+					"path": [
+						"login.php"
+					]
+				},
+				"description": "Access the DVWA (Damn Vulnerable Web Application) running on port 8888. This is the target application being scanned."
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "dvwa_url",
+			"value": "http://localhost:8888",
+			"type": "string"
+		}
+	]
+}
