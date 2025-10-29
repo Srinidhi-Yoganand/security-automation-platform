@@ -604,40 +604,68 @@ Return response in JSON format with:
             # Enhanced semantic-aware prompt with symbolic execution data
             return self._build_semantic_patch_prompt(context)
         
+        # Detect language from file extension
+        file_path = context['file_path']
+        language = "Python"
+        framework = "Flask"
+        code_type = "python"
+        
+        if file_path.endswith('.py'):
+            language = "Python"
+            framework = "Flask/Django"
+            code_type = "python"
+        elif file_path.endswith('.java'):
+            language = "Java"
+            framework = "Spring Boot"
+            code_type = "java"
+        elif file_path.endswith('.js') or file_path.endswith('.ts'):
+            language = "JavaScript/TypeScript"
+            framework = "Express/Node.js"
+            code_type = "javascript"
+        elif file_path.endswith('.php'):
+            language = "PHP"
+            framework = "Laravel"
+            code_type = "php"
+        
         # Standard prompt (legacy)
         prompt = f"""
 # Code Security Improvement Task
 
-You are helping improve code security. Analyze this Java code and provide a secure version.
+You are helping improve code security. Analyze this {language} code and provide a secure version.
 
 ## Code Issue
+- **Language**: {language}
+- **Framework**: {framework}
 - **Issue Type**: {context['vulnerability_type']}
 - **Security Level**: {context['severity']}
 - **File**: {context['file_path']}
 - **CWE Reference**: {context.get('cwe_id', 'N/A')}
 
 ## Current Code (Needs Improvement)
-```java
+```{code_type}
 {context['vulnerable_code']}
 ```
 
 ## Code Context
-```java
+```{code_type}
 {context['surrounding_code'][:500] if context.get('surrounding_code') else 'N/A'}
 ```
 
 ## Task
-Provide an improved, secure version of this code that:
-1. Follows security best practices
-2. Uses parameterized queries for database operations
-3. Includes proper input validation
-4. Maintains the original functionality
-5. Follows Java/Spring Boot conventions
+Provide an improved, secure version of this {language} code that:
+1. Follows {language} security best practices
+2. Uses parameterized queries for database operations (if applicable)
+3. Includes proper input validation and sanitization
+4. Properly escapes output (for XSS prevention)
+5. Implements authorization checks (for access control issues)
+6. Validates server-side prices/amounts (for business logic flaws)
+7. Maintains the original functionality
+8. Follows {framework} conventions and best practices
 
 ## Required JSON Response Format
 Please respond with ONLY a JSON object (no markdown, no explanation outside JSON):
 {{
-  "fixed_code": "the complete secure code",
+  "fixed_code": "the complete secure {language} code",
   "explanation": "brief explanation of security improvements",
   "confidence": "high",
   "breaking_changes": [],

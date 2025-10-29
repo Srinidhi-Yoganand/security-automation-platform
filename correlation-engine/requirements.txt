@@ -25,6 +25,10 @@ requests==2.31.0
 sarif-om==1.0.4
 defusedxml==0.7.1
 
+# SAST (Static Application Security Testing) - Production tools
+semgrep==1.55.0  # Semantic code analysis
+bandit==1.7.6    # Python security linter
+
 # DAST (Dynamic Application Security Testing)
 python-owasp-zap-v2.4==0.0.21  # ZAP Python API client
 
